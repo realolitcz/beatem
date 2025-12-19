@@ -25,7 +25,22 @@ struct Player
     InputEvent buffer[10];   // History of last 10 inputs
     char current_action[32]; // Name of current action
     int debug_mode;          // Debug overlay toggle
+    Hitbox hitbox;           // The area of current attack
+    int score_multiplier;    // Current attack score multiplayer
+    Uint32 last_score_time   // Time that passed since last hit; for resetting multiplier
+
 };
+
+struct Enemy
+{
+    int x;
+    int y;
+    int h;
+    int w;
+    int is_alive;
+    int health_points;
+    Uint32 last_hit_time;
+}
 
 struct Level
 {
@@ -35,6 +50,15 @@ struct Level
     //int enemy_count;
     //EnemySpawn* enemies;
 };
+
+// This struct is fully compatibile with SDL_Rect format
+struct Hitbox
+{
+    int x;
+    int y;
+    int h;
+    int w;
+}
 
 struct Camera;
 
