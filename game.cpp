@@ -23,18 +23,18 @@ int main()
 	Player player
 	{
 		init_texture("assets/knight.bmp", renderer), // Spritesheet
-		COLUMNS_PER_SCREEN * TARGET_TILE_SIZE / 2,        // Absolute x position in the level
-		VISIBLE_ROWS * TARGET_TILE_SIZE / 2,              // Absolute y position in the level
-		Z_GROUND_LEVEL,                                   // Height above "ground level"
-		NO_Z_VELOCITY,                                    // Change-rate of player height
-		0,                                                // X position within given screen
-		PLAYER_SPEED,                                     // Current player velocity
-		IDLE_PLAYER,                                      // Marker of currently conducted action
-		0,                                                // Time of currently performed action
-		TRUE,                                             // Is player facing right?
-		NULL,                                             // History of last 10 inputs
-		NULL,                                             // Name of current action
-		FALSE                                             // Debug overlay toggle
+		COLUMNS_PER_SCREEN * TARGET_TILE_SIZE / 2,   // Absolute x position in the level
+		VISIBLE_ROWS * TARGET_TILE_SIZE / 2,         // Absolute y position in the level
+		Z_GROUND_LEVEL,                              // Height above "ground level"
+		NO_Z_VELOCITY,                               // Change-rate of player height
+		0,                                           // X position within given screen
+		PLAYER_SPEED,                                // Current player velocity
+		IDLE_PLAYER,                                 // Marker of currently conducted action
+		0,                                           // Time of currently performed action
+		TRUE,                                        // Is player facing right?
+		NULL,                                        // History of last 10 inputs
+		NULL,                                        // Name of current action
+		FALSE                                        // Debug overlay toggle
 	};
 
 	Camera camera
@@ -73,6 +73,8 @@ int main()
 				player.z_velocity = NO_Z_VELOCITY;
 				player.action_type = IDLE_PLAYER;
 				player.action_timer = 0;
+				strcpy(player.current_action, " ");
+				clear_buffer(&player);
 				// Reset camera entity
 				camera.camera_x = SCREEN_BEGINNING;
 				camera.camera_y = SCREEN_BEGINNING;

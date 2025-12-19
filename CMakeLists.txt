@@ -5,10 +5,10 @@ set(CMAKE_CXX_STANDARD 23)
 
 add_executable(beatem main.cpp
         game.cpp
-        game.cpp
         window.cpp
         window.h
         defines.h
         logic.cpp
         logic.h
+        window.cpp
 )

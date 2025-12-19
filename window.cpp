@@ -307,8 +307,8 @@ void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player)
 {
 
     char buffer[BASE_BUFFER_SIZE];
-    sprintf(buffer, "ACTION: %s", player->current_action);
     // Show current action name
+    sprintf(buffer, "ACTION: %s", player->current_action);
     render_text(renderer, charset, 0, SCREEN_HEIGHT - 2 * TARGET_CHAR_SIZE, buffer);
 
     // Visualize the Buffer (show last 5 keys)
@@ -316,7 +316,7 @@ void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player)
     for(int i = 0; i < 5; i++)
     {
         const char* keyname = SDL_GetKeyName(player->buffer[i].key);
-        // If buffer is empty (0), print "-"
+        // If buffer is empty, print "-"
         if(player->buffer[i].key == 0)
         {
                 keyname = "-";
