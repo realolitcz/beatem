@@ -231,35 +231,169 @@ void render_player(SDL_Renderer* renderer, const Player* player, const Camera* c
 
 	SDL_Rect src;
 
-    switch (player->action_type)
-	{
-		case 0:
-			src = {0, 0, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE};
-			break;
-		case 1:
-			src ={0, 16, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE};
-			break;
-		case 2:
-			src = {0, 32, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE};
-			break;
-		case 3:
-			src = {16, 0, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE};
-			break;
-		case 4:
-			src = {16, 16, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE};
-        default:
-            ;
+    // Player is set default to walk-sprite
+    int row_offset = ROW_WALK_OFFSET;
+    int total_duration = 0;
+    int total_frames = 0;
+    int current_frame = 0;
+
+    src = {row_offset, current_frame, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE};
+
+    // Priority 0 -> hurt animation
+    if (player->hurt_timer > 0)
+    {
+        row_offset = ROW_HURT_OFFSET;
+        total_duration = HURT_DURATION;
+        total_frames = FRAMES_HURT;
+        // As timer goes 20->0, frame goes 0->3
+        current_frame = (total_duration - player->hurt_timer) * total_frames / total_duration;
     }
 
-    const SDL_Rect dst
-	{
-		player->global_x - camera->camera_x,
-		player->global_y - static_cast<int>(player->z),
-		TARGET_TILE_SIZE,
-		TARGET_TILE_SIZE,
-	};
+    // Priority 1 -> attack animation
+    else if (player->action_type != IDLE_PLAYER)
+    {
+        switch (player->action_type)
+        {
+            case LIGHT_ATTACK_PLAYER:
+                row_offset = ROW_LIGHT_ATK_OFFSET;
+                total_frames = FRAMES_LIGHT;
+                total_duration = ATTACK_LIGHT_FRAMES;
+                break;
+            case HEAVY_ATTACK_PLAYER:
+                row_offset = ROW_HEAVY_ATK_OFFSET;
+                total_frames = FRAMES_HEAVY;
+                total_duration = ATTACK_HEAVY_FRAMES;
+                break;
+            case COMBO_FIRST_PLAYER:
+                row_offset = ROW_COMBO1_OFFSET;
+                total_frames = FRAMES_COMBO1;
+                total_duration = COMBO1_FRAMES;
+                break;
+            case COMBO_SECOND_PLAYER:
+                row_offset = ROW_COMBO2_OFFSET;
+                total_frames = FRAMES_COMBO2;
+                total_duration = COMBO2_FRAMES;
+                break;
+            default:
+                ;
+        }
+        // Calculate frame based on how much time has passed for this action
+        const int time_elapsed = total_duration - player->action_timer;
+        current_frame = time_elapsed * total_frames / total_duration;
+        // Clamp frame to ensure we don't go off-sheet
+        if (current_frame >= total_frames)
+        {
+            current_frame = total_frames - 1;
+        }
+    }
 
-    SDL_RenderCopy(renderer, player->texture, &src, &dst);
+    // Priority 2 -> movement animation
+    else if (player->is_moving)
+    {
+        row_offset = ROW_WALK_OFFSET;
+        // Cycle 2 frames based on global time (speed 150ms)
+        current_frame = (SDL_GetTicks() / 150) % FRAMES_WALK;
+    }
+
+    // Priority 3 -> just chilling
+    else
+    {
+        row_offset = ROW_WALK_OFFSET;
+        // Just stand still (First frame)
+        current_frame = 0;
+    }
+
+    // Apply Coordinates
+    src.y = row_offset;
+    src.x = current_frame * 16; // Shift X by 16px per frame
+
+    // Calculate Destination
+    const SDL_Rect dst
+    {
+        player->global_x - camera->camera_x,
+        player->global_y - static_cast<int>(player->z),
+        TARGET_TILE_SIZE,
+        TARGET_TILE_SIZE
+    };
+
+    // The spritesheet faces RIGHT by default <=> if facing LEFT, flip horizontally.
+    const SDL_RendererFlip flip = player->facing_right ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
+
+    SDL_RenderCopyEx(renderer, player->texture, &src, &dst, 0, nullptr, flip);
+
+}
+
+
+// Function used to render the enemies
+void render_enemy(SDL_Renderer* renderer, const Enemy* enemy, const Camera* camera)
+{
+
+    if (!enemy->is_alive)
+    {
+        return;
+    }
+
+    int row_offset = ROW_ENEMY_WALK_OFFSET;
+    int current_frame = 0;
+
+    // Priority 0 -> stunned animation
+    if (enemy->stun_timer > TIMER_ZERO && enemy->hurt_timer == TIMER_ZERO)
+    {
+        row_offset = ROW_ENEMY_STUN_OFFSET;
+        // Cycle 3 frames quickly (speed 100 ms)
+        current_frame = (SDL_GetTicks() / 100) % FRAMES_ENEMY_STUN;
+    }
+
+    // Priority 1 -> hurt animation
+    else if (enemy->hurt_timer > TIMER_ZERO)
+    {
+        row_offset = ROW_ENEMY_HURT_OFFSET;
+        // Map timer 20->0 to frames 0->2
+        current_frame = (STUN_DURATION - enemy->hurt_timer) * FRAMES_ENEMY_HURT / STUN_DURATION;
+        if (current_frame >= FRAMES_ENEMY_HURT)
+        {
+            current_frame = FRAMES_ENEMY_HURT - 1;
+        }
+    }
+
+    // Priority 2 -> charging (only for Ghost)
+    else if (enemy->state == ENEMY_STATE_CHARGING)
+    {
+        // Use walk animation, but faster to look aggressive (speed 50 ms)
+        row_offset = ROW_ENEMY_WALK_OFFSET;
+        current_frame = (SDL_GetTicks() / 50) % FRAMES_ENEMY_WALK;
+    }
+
+    // Priority 3 -> walk animation
+    else
+    {
+        row_offset = ROW_ENEMY_WALK_OFFSET;
+        // Cycle 2 frames based on global time (speed 200ms)
+        current_frame = (SDL_GetTicks() / 200) % FRAMES_ENEMY_WALK;
+    }
+
+    // Calculate source
+    const SDL_Rect src
+    {
+        .x = row_offset,
+        .y = current_frame * SOURCE_TILE_SIZE,
+        .w = SOURCE_TILE_SIZE,
+        .h = SOURCE_TILE_SIZE
+    };
+
+    // Calculate destination
+    const SDL_Rect dst
+    {
+        .x = enemy->x - camera->camera_x,
+        .y = enemy->y,
+        .w = enemy->w,
+        .h = enemy->h
+    };
+
+    // The spritesheet faces RIGHT by default <=> if facing LEFT, flip horizontally.
+    const SDL_RendererFlip flip = enemy->facing_right ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
+
+    SDL_RenderCopyEx(renderer, enemy->texture, &src, &dst, 0, nullptr, flip);
 
 }
 
@@ -274,6 +408,65 @@ void render_stat(SDL_Renderer* renderer, SDL_Texture* charset, const int x, cons
     sprintf(buffer, "%s: %d", label, value);
 
     render_text(renderer, charset, x, y, buffer);
+
+}
+
+
+// Function to render all necessary status information
+void render_statbar(SDL_Renderer* renderer, SDL_Texture* charset, const Player* player, const Uint32 current_time)
+{
+
+    // X POSITION:
+    render_stat(renderer, charset, SCREEN_BEGINNING, SCREEN_BEGINNING,  "X POSITION",
+               player->global_x);
+    // Y POSITION:
+    render_stat(renderer, charset, SCREEN_BEGINNING, SCREEN_BEGINNING + TARGET_CHAR_SIZE, "Y POSITION",
+           player->global_y);
+    // CURRENT TIME:
+    render_stat(renderer, charset, SCREEN_BEGINNING, SCREEN_BEGINNING + 2 * TARGET_CHAR_SIZE, "ELAPSED TIME",
+           current_time);
+
+    // Next "column"
+
+    // SCORE:
+    render_stat(renderer, charset, TARGET_CHAR_SIZE * 20, SCREEN_BEGINNING, "SCORE", player->score);
+    // MULTIPLIER:
+    render_stat(renderer, charset, TARGET_CHAR_SIZE * 20, SCREEN_BEGINNING + TARGET_CHAR_SIZE, "MULTIPLIER",
+           player->score_multiplier);
+    // Player health bar
+    render_health_bar(renderer, player, TARGET_CHAR_SIZE * 20, SCREEN_BEGINNING + 2 * TARGET_CHAR_SIZE);
+
+}
+
+
+// Helper function to prepare and handle Player health bar
+void render_health_bar(SDL_Renderer* renderer, const Player* player, int x, int y)
+{
+
+    const SDL_Rect background
+    {
+        .x = x,
+        .y = y,
+        .w = 100,
+        .h = 10,
+    };
+
+    SDL_SetRenderDrawColor(renderer, 50, 0, 0, 255);
+    SDL_RenderFillRect(renderer, &background);
+
+    if (player->health_points > 0)
+    {
+        const int bar_width {(player->health_points * 100) / player->max_health_points};
+        const SDL_Rect foreground
+        {
+        .x = x,
+        .y = y,
+        .w = bar_width,
+        .h = 10,
+        };
+        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+        SDL_RenderFillRect(renderer, &foreground);
+    }
 
 }
 
@@ -303,7 +496,7 @@ void render_text(SDL_Renderer* renderer, SDL_Texture* texture, const int x, cons
 
 
 // Function to render info associated with the developer mode
-void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player)
+void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player, Camera* camera)
 {
 
     char buffer[BASE_BUFFER_SIZE];
@@ -324,6 +517,13 @@ void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player)
         sprintf(buffer, "%s", keyname);
         render_text(renderer, charset, (strlen("BUFFER: ") * TARGET_CHAR_SIZE) + (i * 16),
                   SCREEN_HEIGHT - TARGET_CHAR_SIZE, buffer);
+    }
+
+    if (player->attack_box.w > 0)
+    {
+        const SDL_Rect attack_box = {player->attack_box.x - camera->camera_x, player->attack_box.y, player->attack_box.w, player->attack_box.h};
+        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 100); // Green
+        SDL_RenderDrawRect(renderer, &attack_box);
     }
 
 }

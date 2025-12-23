@@ -11,39 +11,58 @@
 
 int main()
 {
-	// Pre-game assets inits: sdl, windows, renderers, level and entities
+
+	// Pre-game assets inits: SDL, windows, renderers, level and entities
 	init_sdl();
 
 	SDL_Window *window = init_window(TITLE, SCREEN_WIDTH, SCREEN_HEIGHT);
 	SDL_Renderer *renderer = init_renderer(window, SCREEN_WIDTH, SCREEN_HEIGHT);
 	SDL_Texture* tileset = init_texture("assets/brawler_tileset.bmp", renderer);
 	SDL_Texture* charset = init_texture("assets/cs8x8.bmp", renderer);
+	SDL_Texture* knight = init_texture("assets/knight_spritesheet.bmp", renderer);
+	SDL_Texture* zombie = init_texture("assets/zombie_spritesheet.bmp", renderer);
+	SDL_Texture* ghost = init_texture("assets/ghost_spritesheet.bmp", renderer);
 	Level* current_level = load_level("assets/level/level1.txt");
 
 	Player player
 	{
-		init_texture("assets/knight.bmp", renderer), // Spritesheet
-		COLUMNS_PER_SCREEN * TARGET_TILE_SIZE / 2,   // Absolute x position in the level
-		VISIBLE_ROWS * TARGET_TILE_SIZE / 2,         // Absolute y position in the level
-		Z_GROUND_LEVEL,                              // Height above "ground level"
-		NO_Z_VELOCITY,                               // Change-rate of player height
-		0,                                           // X position within given screen
-		PLAYER_SPEED,                                // Current player velocity
-		IDLE_PLAYER,                                 // Marker of currently conducted action
-		0,                                           // Time of currently performed action
-		TRUE,                                        // Is player facing right?
-		NULL,                                        // History of last 10 inputs
-		NULL,                                        // Name of current action
-		FALSE                                        // Debug overlay toggle
+		.texture = knight,
+		.global_x = COLUMNS_PER_SCREEN * TARGET_TILE_SIZE / 2,
+		.global_y = VISIBLE_ROWS * TARGET_TILE_SIZE / 2,
+		.z = Z_GROUND_LEVEL,
+		.z_velocity = NO_Z_VELOCITY,
+		.screen_x = SCREEN_BEGINNING,
+		.player_speed = PLAYER_SPEED,
+		.is_moving = FALSE,
+		.action_type = IDLE_PLAYER,
+		.action_timer = TIMER_ZERO,
+		.facing_right = TRUE,
+		.buffer = {},
+		.current_action = {0},
+		.debug_mode = FALSE,
+		.attack_box = {0, 0, 0, 0},
+		.score_multiplier = 1,
+		.last_score_time = 0,
+		.score = 0,
+		.hurt_timer = TIMER_ZERO,
+		.health_points = PLAYER_MAX_HEALTH,
+		.max_health_points = PLAYER_MAX_HEALTH
 	};
 
 	Camera camera
 	{
-		SCREEN_BEGINNING,
-		SCREEN_BEGINNING,
-		SCREEN_WIDTH,
-		SCREEN_HEIGHT,
+		.camera_x = SCREEN_BEGINNING,
+		.camera_y = SCREEN_BEGINNING,
+		.camera_width = SCREEN_WIDTH,
+		.camera_height = SCREEN_HEIGHT,
 	};
+
+	// Holder for all enemies entities
+	Enemy enemies[5];
+
+	// TO MODIFY AND FUNCTIONALIZE
+	init_enemy(&enemies[0], zombie, ENEMY_TYPE_CHASER, 600, 800);
+	init_enemy(&enemies[1], ghost, ENEMY_TYPE_CHARGER, 800, 400);
 
 	SDL_Event event;
 	int quit = FALSE;
@@ -66,15 +85,30 @@ int main()
 				// Deload and reload current level
 				free_level(current_level);
 				current_level = load_level("assets/level/level1.txt");
+
 				// Reset player entity
+				player.texture = knight;
 				player.global_x = COLUMNS_PER_SCREEN * TARGET_TILE_SIZE / 2;
 				player.global_y = VISIBLE_ROWS * TARGET_TILE_SIZE / 2;
 				player.z = Z_GROUND_LEVEL;
 				player.z_velocity = NO_Z_VELOCITY;
+				player.screen_x = SCREEN_BEGINNING;
+				player.player_speed = PLAYER_SPEED;
+				player.is_moving = FALSE;
 				player.action_type = IDLE_PLAYER;
-				player.action_timer = 0;
-				strcpy(player.current_action, " ");
+				player.action_timer = TIMER_ZERO;
+				player.facing_right = TRUE;
 				clear_buffer(&player);
+				strcpy(player.current_action, "");
+				player.debug_mode = FALSE;
+				player.attack_box = {0, 0, 0, 0};
+				player.score_multiplier = 1;
+				player.last_score_time = 0;
+				player.score = 0;
+				player.hurt_timer = TIMER_ZERO;
+				player.health_points = PLAYER_MAX_HEALTH;
+				player.max_health_points = PLAYER_MAX_HEALTH;
+
 				// Reset camera entity
 				camera.camera_x = SCREEN_BEGINNING;
 				camera.camera_y = SCREEN_BEGINNING;
@@ -89,21 +123,36 @@ int main()
 		player.screen_x = player.global_x - camera.camera_x;
 		handle_camera_movement(&player, current_level, &camera);
 
+		// Hitboxes and collisions
+		update_hitboxes(&player);
+		update_enemies(enemies, 5, &player);
+		for (int i = 0; i < 5; i++)
+		{
+			// Check if Player hits Enemy
+			check_if_enemy_hit(&player, &enemies[i], frame_start);
+			// Check if Enemy hits Player
+			check_if_player_hit(&player, &enemies[i]);
+		}
+
 		// End-tick renderings
 		SDL_RenderClear(renderer);
-
 		render_background(renderer, tileset, current_level, &camera);
+		render_statbar(renderer, charset, &player, (frame_start - start_time) / 1000);
 
-		render_stat(renderer, charset, SCREEN_BEGINNING, SCREEN_BEGINNING,  "X POSITION",
-		       player.global_x);
-		render_stat(renderer, charset, SCREEN_BEGINNING, SCREEN_BEGINNING + TARGET_CHAR_SIZE, "Y POSITION",
-			   player.global_y);
-		render_stat(renderer, charset, SCREEN_BEGINNING, SCREEN_BEGINNING + 2 * TARGET_CHAR_SIZE, "TIME",
-			   (frame_start - start_time) / 1000);
+		// FOR TEST
+		for(int i=0; i<5; i++) {
+			// Use the new function instead of SDL_RenderFillRect
+			render_enemy(renderer, &enemies[i], &camera);
+
+			// Decrease enemy hurt timer manually here or in update_enemies
+			if (enemies[i].hurt_timer > 0) enemies[i].hurt_timer--;
+
+		}
+		// FOR TEST
 
 		if (player.debug_mode)
 		{
-			render_debug(renderer, charset, &player);
+			render_debug(renderer, charset, &player, &camera);
 		}
 
 		render_player(renderer, &player, &camera);
