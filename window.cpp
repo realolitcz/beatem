@@ -94,7 +94,7 @@ SDL_Texture* init_texture(const char* path, SDL_Renderer* renderer)
 Level* load_level(const char* path)
 {
 
-    // file handle for level-config file
+    // File handle for level-config file
     FILE* file {fopen(path, "r")};
 
     if (file == nullptr)
@@ -102,7 +102,7 @@ Level* load_level(const char* path)
         throw std::runtime_error("Cannot open level file!");
     }
 
-    // allocate memory for the level struct per se
+    // Allocate memory for the level struct per se
     Level* level {static_cast<Level*>(malloc(sizeof(Level)))};
 
     if (level == nullptr)
@@ -114,32 +114,30 @@ Level* load_level(const char* path)
     // read the preamble of the file i.e. the width and height (first line of the file)
     if (fscanf(file, "%d %d", &level->width_in_tiles, &level->height_in_tiles) != 2)
     {
+        free(level);
         fclose(file);
         throw std::runtime_error("Invalid level file header");
     }
 
-    // allocate array of arrays to store level's tile map
+    // Allocate array of arrays to store level's tile map
     level->map_layout = static_cast<char**>(malloc(level->height_in_tiles * sizeof(char*)));
 
-    // allocate each row of the tile map
-    for (int row = 0; row < level->height_in_tiles; row++)
+    // Allocate each row of the tile map
+    for (int row {0}; row < level->height_in_tiles; row++)
     {
         level->map_layout[row] = static_cast<char*>(malloc(level->width_in_tiles * sizeof(char)));
     }
 
-    // read and store every tile info from the level file
-    for (int row = 0; row < level->height_in_tiles; row++)
+    // Read and store every tile info from the level file
+    for (int row {0}; row < level->height_in_tiles; row++)
     {
-        for (int column = 0; column < level->width_in_tiles; column++)
+        for (int column {0}; column < level->width_in_tiles; column++)
         {
             fscanf(file, " %c", &level->map_layout[row][column]);
         }
     }
 
     fclose(file);
-
-    // debug info
-    printf("Level loaded: Size: %dx%d", level->width_in_tiles, level->height_in_tiles);
 
     return level;
 
@@ -150,7 +148,7 @@ Level* load_level(const char* path)
 void free_level(Level* level)
 {
 
-    for (int row = 0; row < level->height_in_tiles; row++)
+    for (int row {0}; row < level->height_in_tiles; row++)
     {
         free(level->map_layout[row]);
     }
@@ -165,52 +163,92 @@ void free_level(Level* level)
 void render_background(SDL_Renderer* renderer, SDL_Texture* texture, const Level* level, const Camera* camera)
 {
 
-    SDL_Rect src{0, 0, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE};
+    // Holder for rendered tile
+    SDL_Rect source
+    {
+        .x = 0,
+        .y = 0,
+        .w = SOURCE_TILE_SIZE,
+        .h = SOURCE_TILE_SIZE
+    };
 
-    SDL_Rect floor{0, 0, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE};
-    SDL_Rect wall{16, 0, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE};
-    SDL_Rect border{32, 0, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE};
-    SDL_Rect darkness{32, 16, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE};
+    // Marker of tiles in the tileset
+    constexpr SDL_Rect floor
+    {
+        .x = 0,
+        .y = 0,
+        .w = SOURCE_TILE_SIZE,
+        .h = SOURCE_TILE_SIZE
+    };
+    constexpr SDL_Rect wall
+    {
+        .x = 16,
+        .y = 0,
+        .w = SOURCE_TILE_SIZE,
+        .h = SOURCE_TILE_SIZE
+    };
+    constexpr SDL_Rect border
+    {
+        .x = 32,
+        .y = 0,
+        .w = SOURCE_TILE_SIZE,
+        .h = SOURCE_TILE_SIZE
+    };
+    constexpr SDL_Rect darkness
+    {
+        .x = 32,
+        .y = 16,
+        .w = SOURCE_TILE_SIZE,
+        .h = SOURCE_TILE_SIZE
+    };
 
-    SDL_Rect dst{0, 0, TARGET_TILE_SIZE, TARGET_TILE_SIZE};
+    // Holder for render destination
+    SDL_Rect destination
+    {
+        .x = 0,
+        .y = 0,
+        .w = TARGET_TILE_SIZE,
+        .h = TARGET_TILE_SIZE
+    };
 
-    int start_column = camera->camera_x / TARGET_TILE_SIZE;
-    int end_column = (camera->camera_x + SCREEN_WIDTH) / TARGET_TILE_SIZE + 1;
+    // Markers of currently visible level-area
+    int start_column {camera->camera_x / TARGET_TILE_SIZE};
+    int end_column {(camera->camera_x + SCREEN_WIDTH) / TARGET_TILE_SIZE + 1};
 
+    // Clap start column and end column not to exceed level width
     if (start_column < 0)
     {
         start_column = 0;
     }
-
     if (end_column >= level->width_in_tiles)
     {
         end_column = level->width_in_tiles;
     }
 
-    for (int row = 0; row < level->height_in_tiles; row++)
+    for (int row {0}; row < level->height_in_tiles; row++)
     {
-        for (int column = start_column; column < end_column; column++)
+        for (int column {start_column}; column < end_column; column++)
         {
             switch (level->map_layout[row][column])
             {
                 case 'F':
-                    src = floor;
+                    source = floor;
                     break;
                 case 'W':
-                    src = wall;
+                    source = wall;
                     break;
                 case 'B':
-                    src = border;
+                    source = border;
                     break;
                 case 'D':
-                    src = darkness;
+                    source = darkness;
                     break;
                 case ' ':
                 default:
                     continue;
             }
 
-            dst =
+            destination =
             {
                 column * TARGET_TILE_SIZE - camera->camera_x,
                 row * TARGET_TILE_SIZE,
@@ -218,7 +256,7 @@ void render_background(SDL_Renderer* renderer, SDL_Texture* texture, const Level
                 TARGET_TILE_SIZE,
             };
 
-            SDL_RenderCopy(renderer, texture, &src, &dst);
+            SDL_RenderCopy(renderer, texture, &source, &destination);
         }
     }
 
@@ -229,15 +267,20 @@ void render_background(SDL_Renderer* renderer, SDL_Texture* texture, const Level
 void render_player(SDL_Renderer* renderer, const Player* player, const Camera* camera)
 {
 
-	SDL_Rect src;
-
     // Player is set default to walk-sprite
-    int row_offset = ROW_WALK_OFFSET;
-    int total_duration = 0;
-    int total_frames = 0;
-    int current_frame = 0;
+    int row_offset {ROW_WALK_OFFSET};
+    int total_duration {0};
+    int total_frames {0};
+    int current_frame {0};
 
-    src = {row_offset, current_frame, SOURCE_TILE_SIZE, SOURCE_TILE_SIZE};
+    // Source sprite for the player
+    SDL_Rect source
+    {
+        .x = row_offset,
+        .y = current_frame,
+        .w = SOURCE_TILE_SIZE,
+        .h = SOURCE_TILE_SIZE
+    };
 
     // Priority 0 -> hurt animation
     if (player->hurt_timer > 0)
@@ -304,22 +347,22 @@ void render_player(SDL_Renderer* renderer, const Player* player, const Camera* c
     }
 
     // Apply Coordinates
-    src.y = row_offset;
-    src.x = current_frame * 16; // Shift X by 16px per frame
+    source.y = row_offset;
+    source.x = current_frame * 16; // Shift X by 16px per frame
 
     // Calculate Destination
-    const SDL_Rect dst
+    const SDL_Rect destination
     {
-        player->global_x - camera->camera_x,
-        player->global_y - static_cast<int>(player->z),
-        TARGET_TILE_SIZE,
-        TARGET_TILE_SIZE
+        .x = player->global_x - camera->camera_x,
+        .y = player->global_y - static_cast<int>(player->z),
+        .w = TARGET_TILE_SIZE,
+        .h = TARGET_TILE_SIZE
     };
 
     // The spritesheet faces RIGHT by default <=> if facing LEFT, flip horizontally.
     const SDL_RendererFlip flip = player->facing_right ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
 
-    SDL_RenderCopyEx(renderer, player->texture, &src, &dst, 0, nullptr, flip);
+    SDL_RenderCopyEx(renderer, player->texture, &source, &destination, 0, nullptr, flip);
 
 }
 
@@ -333,8 +376,9 @@ void render_enemy(SDL_Renderer* renderer, const Enemy* enemy, const Camera* came
         return;
     }
 
-    int row_offset = ROW_ENEMY_WALK_OFFSET;
-    int current_frame = 0;
+    // Enemy is set default to walk-sprite
+    int row_offset {ROW_ENEMY_WALK_OFFSET};
+    int current_frame {0};
 
     // Priority 0 -> stunned animation
     if (enemy->stun_timer > TIMER_ZERO && enemy->hurt_timer == TIMER_ZERO)
@@ -375,8 +419,8 @@ void render_enemy(SDL_Renderer* renderer, const Enemy* enemy, const Camera* came
     // Calculate source
     const SDL_Rect src
     {
-        .x = row_offset,
-        .y = current_frame * SOURCE_TILE_SIZE,
+        .x = current_frame * SOURCE_TILE_SIZE,
+        .y = row_offset,
         .w = SOURCE_TILE_SIZE,
         .h = SOURCE_TILE_SIZE
     };
@@ -407,13 +451,13 @@ void render_stat(SDL_Renderer* renderer, SDL_Texture* charset, const int x, cons
 
     sprintf(buffer, "%s: %d", label, value);
 
-    render_text(renderer, charset, x, y, buffer);
+    render_text(renderer, charset, x, y, buffer, 1.0f);
 
 }
 
 
 // Function to render all necessary status information
-void render_statbar(SDL_Renderer* renderer, SDL_Texture* charset, const Player* player, const Uint32 current_time)
+void render_statusbar(SDL_Renderer* renderer, SDL_Texture* charset, const Player* player, const Uint32 current_time)
 {
 
     // X POSITION:
@@ -431,24 +475,86 @@ void render_statbar(SDL_Renderer* renderer, SDL_Texture* charset, const Player* 
     // SCORE:
     render_stat(renderer, charset, TARGET_CHAR_SIZE * 20, SCREEN_BEGINNING, "SCORE", player->score);
     // MULTIPLIER:
-    render_stat(renderer, charset, TARGET_CHAR_SIZE * 20, SCREEN_BEGINNING + TARGET_CHAR_SIZE, "MULTIPLIER",
-           player->score_multiplier);
+    render_multiplier(renderer, charset, player);
     // Player health bar
-    render_health_bar(renderer, player, TARGET_CHAR_SIZE * 20, SCREEN_BEGINNING + 2 * TARGET_CHAR_SIZE);
+    render_health_bar(renderer, player);
+
+}
+
+
+// Function used to render the flashy and bold multiplier graphic
+void render_multiplier(SDL_Renderer* renderer, SDL_Texture* charset, const Player* player)
+{
+
+    // Only show if we actually have a combo
+    if (player->score_multiplier > 1)
+    {
+        char buffer[BASE_BUFFER_SIZE];
+        // Short, Punchy Text
+        sprintf(buffer, "%dx COMBO!", player->score_multiplier);
+
+        // Circa 3/4 of the screen
+        int combo_x {SCREEN_WIDTH - (TARGET_TILE_SIZE * 8)};
+        int combo_y = {TARGET_TILE_SIZE * 1/2};
+
+        // If the scale is big => shake the text
+        if (player->multiplier_scale > 1.5f)
+        {
+            // Add random offset between -2 and 2
+            combo_x += (rand() % 5) - 2;
+            combo_y += (rand() % 5) - 2;
+        }
+
+        // Colours: Normal = White/Gold, High Combo (>5) = Rainbow Cycle.
+        if (player->score_multiplier >= 5)
+        {
+            // Cycle colors every 100ms
+            int cycle {static_cast<int>(SDL_GetTicks() / 100 % 3)};
+            switch (cycle)
+            {
+                case 0:
+                    SDL_SetTextureColorMod(charset, 255, 0, 0);
+                    break;
+                case 1:
+                    SDL_SetTextureColorMod(charset, 0, 255, 0);
+                    break;
+                default:
+                    SDL_SetTextureColorMod(charset, 0, 255, 255);
+                    break;
+            }
+        }
+        else if (player->multiplier_scale > 1.0f)
+        {
+            SDL_SetTextureColorMod(charset, 255, 215, 0); // Gold (On Hit)
+        }
+        else
+        {
+            SDL_SetTextureColorMod(charset, 200, 200, 200); // Silver (Decaying)
+        }
+
+        render_text(renderer, charset, combo_x, combo_y, buffer, player->multiplier_scale);
+
+        SDL_SetTextureColorMod(charset, 255, 255, 255);
+    }
 
 }
 
 
 // Helper function to prepare and handle Player health bar
-void render_health_bar(SDL_Renderer* renderer, const Player* player, int x, int y)
+void render_health_bar(SDL_Renderer* renderer, const Player* player)
 {
 
-    const SDL_Rect background
+    constexpr int total_bar_width {TARGET_TILE_SIZE * 4};
+    constexpr int bar_height {TARGET_TILE_SIZE * 1/3};
+    constexpr int bar_x {(SCREEN_WIDTH - total_bar_width) * 1/2};
+    constexpr int bar_y {SCREEN_HEIGHT - (TARGET_TILE_SIZE * 2/3)};
+
+    constexpr SDL_Rect background
     {
-        .x = x,
-        .y = y,
-        .w = 100,
-        .h = 10,
+        .x = bar_x,
+        .y = bar_y,
+        .w = total_bar_width,
+        .h = bar_height,
     };
 
     SDL_SetRenderDrawColor(renderer, 50, 0, 0, 255);
@@ -456,57 +562,101 @@ void render_health_bar(SDL_Renderer* renderer, const Player* player, int x, int 
 
     if (player->health_points > 0)
     {
-        const int bar_width {(player->health_points * 100) / player->max_health_points};
+        const int current_bar_width = (player->health_points * total_bar_width) / player->max_health_points;
+
         const SDL_Rect foreground
         {
-        .x = x,
-        .y = y,
-        .w = bar_width,
-        .h = 10,
+            .x = bar_x,
+            .y = bar_y,
+            .w = current_bar_width,
+            .h = bar_height,
         };
-        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+
+        if (current_bar_width > total_bar_width * 1/2)
+        {
+            SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+        }
+        else if (current_bar_width > total_bar_width * 1/4)
+        {
+            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+        }
+        else
+        {
+            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+        }
+
         SDL_RenderFillRect(renderer, &foreground);
     }
+
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &background);
 
 }
 
 
-// Function used to render given text on given position
-void render_text(SDL_Renderer* renderer, SDL_Texture* texture, const int x, const int y, const char* text)
+// Function used to render given text on given position. Based on Dr Ostrowski's template
+void render_text(SDL_Renderer* renderer, SDL_Texture* texture, const int x, const int y, const char* text,
+                 const float scale)
 {
 
-    SDL_Rect src{0, 0, SOURCE_CHAR_SIZE, SOURCE_CHAR_SIZE};
-    SDL_Rect dst{x, y, TARGET_CHAR_SIZE, TARGET_CHAR_SIZE};
+    const int length {static_cast<int>(strlen(text))};
 
-    const int length = strlen(text);
+    // Size of original char
+    constexpr int original_size {TARGET_CHAR_SIZE};
+    // Size of destination char
+    const int scaled_size {static_cast<int>(TARGET_CHAR_SIZE * scale)};
 
-    for (int i = 0; i < length; i++)
+    // Calculate centering offset ->  when scale > 1.0f, shift X/Y back by half, so the text appears to grow from
+    // its center, not top-left
+    const int x_offset {(length * (scaled_size - original_size)) / 2};
+    const int y_offset {(scaled_size - original_size) / 2};
+
+    SDL_Rect source
+    {
+        .x = SCREEN_BEGINNING,
+        .y = SCREEN_BEGINNING,
+        .w = SOURCE_CHAR_SIZE,
+        .h = SOURCE_CHAR_SIZE
+    };
+
+    SDL_Rect destination
+    {
+        .x = x - x_offset,
+        .y = y - y_offset,
+        .w = scaled_size,
+        .h = scaled_size
+    };
+
+    for (int i {0}; i < length; i++)
     {
         const unsigned char character = text[i];
 
-        src.x = (character % SHEET_COLUMNS) * SOURCE_CHAR_SIZE;
-        src.y = (character / SHEET_COLUMNS) * SOURCE_CHAR_SIZE;
+        source.x = (character % SHEET_COLUMNS) * SOURCE_CHAR_SIZE;
+        source.y = (character / SHEET_COLUMNS) * SOURCE_CHAR_SIZE;
 
-        SDL_RenderCopy(renderer, texture, &src, &dst);
+        SDL_RenderCopy(renderer, texture, &source, &destination);
 
-        dst.x += TARGET_CHAR_SIZE;
+        destination.x += scaled_size;
     }
 
 }
 
 
 // Function to render info associated with the developer mode
-void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player, Camera* camera)
+void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player, const Camera* camera)
 {
 
+    // Buffer for holding text
     char buffer[BASE_BUFFER_SIZE];
     // Show current action name
     sprintf(buffer, "ACTION: %s", player->current_action);
-    render_text(renderer, charset, 0, SCREEN_HEIGHT - 2 * TARGET_CHAR_SIZE, buffer);
+    render_text(renderer, charset, SCREEN_BEGINNING, SCREEN_HEIGHT - 2 * TARGET_CHAR_SIZE, buffer,
+           INITIAL_SCALE);
 
     // Visualize the Buffer (show last 5 keys)
-    render_text(renderer, charset, 0, SCREEN_HEIGHT - TARGET_CHAR_SIZE, "BUFFER: ");
-    for(int i = 0; i < 5; i++)
+    render_text(renderer, charset, SCREEN_BEGINNING, SCREEN_HEIGHT - TARGET_CHAR_SIZE, "BUFFER: ",
+           INITIAL_SCALE);
+    for(int i {0}; i < 5; i++)
     {
         const char* keyname = SDL_GetKeyName(player->buffer[i].key);
         // If buffer is empty, print "-"
@@ -516,13 +666,19 @@ void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player, 
         }
         sprintf(buffer, "%s", keyname);
         render_text(renderer, charset, (strlen("BUFFER: ") * TARGET_CHAR_SIZE) + (i * 16),
-                  SCREEN_HEIGHT - TARGET_CHAR_SIZE, buffer);
+                  SCREEN_HEIGHT - TARGET_CHAR_SIZE, buffer, INITIAL_SCALE);
     }
 
     if (player->attack_box.w > 0)
     {
-        const SDL_Rect attack_box = {player->attack_box.x - camera->camera_x, player->attack_box.y, player->attack_box.w, player->attack_box.h};
-        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 100); // Green
+        const SDL_Rect attack_box
+        {
+            .x = player->attack_box.x - camera->camera_x,
+            .y = player->attack_box.y,
+            .w = player->attack_box.w,
+            .h = player->attack_box.h
+        };
+        SDL_SetRenderDrawColor(renderer, 0, 255, 0, 100);
         SDL_RenderDrawRect(renderer, &attack_box);
     }
 

@@ -28,15 +28,16 @@ struct Player
     float z_velocity;        // Change-rate of player height
     int screen_x;            // X position within given screen
     int player_speed;        // Current player velocity
-    int is_moving;           // Is player moving right now?
+    bool is_moving;          // Is player moving right now?
     int action_type;         // Marker of currently conducted action
     int action_timer;        // Time of currently performed action
-    int facing_right;        // Is player facing right?
+    bool facing_right;       // Is player facing right?
     InputEvent buffer[10];   // History of last 10 inputs
     char current_action[32]; // Name of current action
     int debug_mode;          // Debug overlay toggle
     Hitbox attack_box;       // The area of current attack
     int score_multiplier;    // Current attack score multiplayer
+    float multiplier_scale;  // Visual scale for the multiplier (1.0 -> normal, 2.5 -> big pop)
     Uint32 last_score_time;  // Time that passed since last hit
     int score;               // Current points for the player
     int hurt_timer;          // Counts down when player takes damage
@@ -52,12 +53,12 @@ struct Enemy
     int y;                // Absolute y position in the level
     int h;                // Height of the enemy entity
     int w;                // Width of the enemy entity
-    int is_alive;         // Is enemy still alive?
+    bool is_alive;        // Is enemy still alive?
     int state;            // State e.g. whether is attacking, etc.
     int timer;            // General purpose timer for charging/cooldowns
     int stun_timer;       // Frames remaining in stun
     int hurt_timer;       // Counts down when enemy takes damage
-    int facing_right;     // Is enemy facing right?
+    bool facing_right;    // Is enemy facing right?
     int health_points;    // Health points of the enemy entity
     Hitbox attack_box;    // The area of current attack TO the player
     Uint32 last_hit_time; // Time that passed since last hit received
@@ -91,5 +92,6 @@ void update_enemies(Enemy* enemies, int count, const Player* player);
 void update_hitboxes(Player* player);
 void check_if_enemy_hit(Player* player, Enemy* enemy, Uint32 current_time);
 void check_if_player_hit(Player* player, const Enemy* enemy);
+void reset_player_state(Player* player);
 
 #endif //BEATEM_LOGIC_H

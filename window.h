@@ -22,9 +22,10 @@ void render_background(SDL_Renderer* renderer, SDL_Texture* texture, const Level
 void render_player(SDL_Renderer* renderer, const Player* player, const Camera* camera);
 void render_enemy(SDL_Renderer* renderer, const Enemy* enemy, const Camera* camera);
 void render_stat(SDL_Renderer* renderer, SDL_Texture* charset, int x, int y, const char* label, int value);
-void render_statbar(SDL_Renderer* renderer, SDL_Texture* charset, const Player* player, Uint32 current_time);
-void render_health_bar(SDL_Renderer* renderer, const Player* player, int x, int y);
-void render_text(SDL_Renderer* renderer, SDL_Texture* texture, int x, int y, const char* text);
-void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player, Camera* camera);
+void render_statusbar(SDL_Renderer* renderer, SDL_Texture* charset, const Player* player, Uint32 current_time);
+void render_multiplier(SDL_Renderer* renderer, SDL_Texture* charset, const Player* player);
+void render_health_bar(SDL_Renderer* renderer, const Player* player);
+void render_text(SDL_Renderer* renderer, SDL_Texture* texture, int x, int y, const char* text, float scale);
+void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player, const Camera* camera);
 
 #endif //BEATEM_WINDOW_H

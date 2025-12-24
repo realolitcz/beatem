@@ -33,15 +33,16 @@ int main()
 		.z_velocity = NO_Z_VELOCITY,
 		.screen_x = SCREEN_BEGINNING,
 		.player_speed = PLAYER_SPEED,
-		.is_moving = FALSE,
+		.is_moving = false,
 		.action_type = IDLE_PLAYER,
 		.action_timer = TIMER_ZERO,
-		.facing_right = TRUE,
+		.facing_right = true,
 		.buffer = {},
 		.current_action = {0},
-		.debug_mode = FALSE,
+		.debug_mode = false,
 		.attack_box = {0, 0, 0, 0},
 		.score_multiplier = 1,
+		.multiplier_scale = 1.0f,
 		.last_score_time = 0,
 		.score = 0,
 		.hurt_timer = TIMER_ZERO,
@@ -65,11 +66,11 @@ int main()
 	init_enemy(&enemies[1], ghost, ENEMY_TYPE_CHARGER, 800, 400);
 
 	SDL_Event event;
-	int quit = FALSE;
+	int quit = false;
 	Uint32 start_time = SDL_GetTicks();
 
 	// Main game loop
-	while (quit != TRUE)
+	while (quit != true)
 	{
 		const Uint32 frame_start = SDL_GetTicks();
 
@@ -87,27 +88,7 @@ int main()
 				current_level = load_level("assets/level/level1.txt");
 
 				// Reset player entity
-				player.texture = knight;
-				player.global_x = COLUMNS_PER_SCREEN * TARGET_TILE_SIZE / 2;
-				player.global_y = VISIBLE_ROWS * TARGET_TILE_SIZE / 2;
-				player.z = Z_GROUND_LEVEL;
-				player.z_velocity = NO_Z_VELOCITY;
-				player.screen_x = SCREEN_BEGINNING;
-				player.player_speed = PLAYER_SPEED;
-				player.is_moving = FALSE;
-				player.action_type = IDLE_PLAYER;
-				player.action_timer = TIMER_ZERO;
-				player.facing_right = TRUE;
-				clear_buffer(&player);
-				strcpy(player.current_action, "");
-				player.debug_mode = FALSE;
-				player.attack_box = {0, 0, 0, 0};
-				player.score_multiplier = 1;
-				player.last_score_time = 0;
-				player.score = 0;
-				player.hurt_timer = TIMER_ZERO;
-				player.health_points = PLAYER_MAX_HEALTH;
-				player.max_health_points = PLAYER_MAX_HEALTH;
+				reset_player_state(&player);
 
 				// Reset camera entity
 				camera.camera_x = SCREEN_BEGINNING;
@@ -137,7 +118,7 @@ int main()
 		// End-tick renderings
 		SDL_RenderClear(renderer);
 		render_background(renderer, tileset, current_level, &camera);
-		render_statbar(renderer, charset, &player, (frame_start - start_time) / 1000);
+		render_statusbar(renderer, charset, &player, (frame_start - start_time) / 1000);
 
 		// FOR TEST
 		for(int i=0; i<5; i++) {
@@ -145,7 +126,7 @@ int main()
 			render_enemy(renderer, &enemies[i], &camera);
 
 			// Decrease enemy hurt timer manually here or in update_enemies
-			if (enemies[i].hurt_timer > 0) enemies[i].hurt_timer--;
+			//if (enemies[i].hurt_timer > 0) enemies[i].hurt_timer--;
 
 		}
 		// FOR TEST

@@ -11,8 +11,8 @@ void handle_input_event(Player* player, const SDL_Event* event, const Level* cur
     // If key was pressed
     if (event->type == SDL_KEYDOWN && event->key.repeat == 0 )
     {
-        const int key = event->key.keysym.sym;
-        int combo_triggered = FALSE;
+        const int key {event->key.keysym.sym};
+        bool combo_triggered {false};
 
         if (key == SDLK_F1)
         {
@@ -24,18 +24,18 @@ void handle_input_event(Player* player, const SDL_Event* event, const Level* cur
         {
             push_input(player, key, SDL_GetTicks());
 
-            const int previous_time = player->action_timer;
+            const int previous_time {player->action_timer};
 
             check_combos(player, current_level,SDL_GetTicks());
 
             if (player->action_timer > previous_time)
             {
-                combo_triggered = TRUE;
+                combo_triggered = true;
             }
         }
 
         // If combo was not triggered we perform normal actions
-        if (combo_triggered == FALSE)
+        if (combo_triggered == false)
         {
             if (key == SDLK_SPACE)
             {
@@ -62,14 +62,14 @@ void handle_input_event(Player* player, const SDL_Event* event, const Level* cur
 void handle_player_movement(Player* player, const Level* current_level, const Uint8* currentKeyStates)
 {
 
-    player->is_moving = FALSE;
+    player->is_moving = false;
 
     if (currentKeyStates[SDL_SCANCODE_W])
     {
         if (player->global_y > FLOOR_HORIZON)
         {
             player->global_y -= player->player_speed;
-            player->is_moving = TRUE;
+            player->is_moving = true;
         }
     }
     if (currentKeyStates[SDL_SCANCODE_S])
@@ -77,7 +77,7 @@ void handle_player_movement(Player* player, const Level* current_level, const Ui
         if (player->global_y < FLOOR_BOTTOM)
         {
             player->global_y += player->player_speed;
-            player->is_moving = TRUE;
+            player->is_moving = true;
         }
     }
     if (currentKeyStates[SDL_SCANCODE_A])
@@ -85,8 +85,8 @@ void handle_player_movement(Player* player, const Level* current_level, const Ui
         if (player->global_x > FLOOR_LEFT_SIDE)
         {
             player->global_x -= player->player_speed;
-            player->facing_right = FALSE;
-            player->is_moving = TRUE;
+            player->facing_right = false;
+            player->is_moving = true;
         }
     }
     if (currentKeyStates[SDL_SCANCODE_D])
@@ -94,8 +94,8 @@ void handle_player_movement(Player* player, const Level* current_level, const Ui
         if (player->global_x < current_level->width_in_tiles * TARGET_TILE_SIZE -  2 * TARGET_TILE_SIZE)
         {
             player->global_x += player->player_speed;
-            player->facing_right = TRUE;
-            player->is_moving = TRUE;
+            player->facing_right = true;
+            player->is_moving = true;
         }
     }
 
@@ -131,7 +131,7 @@ void handle_camera_movement(const Player* player, const Level* current_level, Ca
 void player_light_attack(Player* player)
 {
 
-    if (player->action_timer == 0)
+    if (player->action_timer == TIMER_ZERO)
     {
         player->action_type = LIGHT_ATTACK_PLAYER;
         player->action_timer = ATTACK_LIGHT_FRAMES;
@@ -144,7 +144,7 @@ void player_light_attack(Player* player)
 void player_heavy_attack(Player* player)
 {
 
-    if (player->action_timer == 0)
+    if (player->action_timer == TIMER_ZERO)
     {
         player->action_type = HEAVY_ATTACK_PLAYER;
         player->action_timer = ATTACK_HEAVY_FRAMES;
@@ -157,7 +157,7 @@ void player_heavy_attack(Player* player)
 void handle_attack(Player* player)
 {
 
-    if (player->action_timer > 0)
+    if (player->action_timer > TIMER_ZERO)
     {
         player->action_timer--;
     }
@@ -166,18 +166,43 @@ void handle_attack(Player* player)
         player->action_type = IDLE_PLAYER;
     }
 
-    if (player->hurt_timer > 0)
+    if (player->hurt_timer > TIMER_ZERO)
     {
         player->hurt_timer--;
+    }
+
+    if (player->multiplier_scale > INITIAL_SCALE)
+    {
+        player->multiplier_scale -= INITIAL_SCALE_DECR;
+        if (player->multiplier_scale < INITIAL_SCALE)
+        {
+            player->multiplier_scale = INITIAL_SCALE;
+        }
+    }
+
+    if (player->score_multiplier > 1)
+    {
+        if (SDL_GetTicks() - player->last_score_time > MULTIPLIER_TIMEOUT)
+        {
+            player->score_multiplier = 1;             // Reset the count
+            player->multiplier_scale = INITIAL_SCALE; // Reset the visual size
+        }
+    }
+
+    if (player->multiplier_scale > INITIAL_SCALE)
+    {
+        player->multiplier_scale -= INITIAL_SCALE_DECR;
     }
 
 }
 
 
+// Function used to handle player damage
 void player_take_damage(Player *player, const int damage)
 {
+
     // Ensure we do not hurt player multiple times
-    if (player->hurt_timer > 0)
+    if (player->hurt_timer > TIMER_ZERO)
     {
         return;
     }
@@ -197,7 +222,7 @@ void player_take_damage(Player *player, const int damage)
 void player_jump(Player* player)
 {
 
-    if (player->z == 0)
+    if (player->z == Z_GROUND_LEVEL)
     {
         player->z_velocity = JUMP_FORCE;
     }
@@ -209,16 +234,16 @@ void player_jump(Player* player)
 void handle_gravity(Player* player)
 {
 
-    if (player->z > 0 || player->z_velocity != 0)
+    if (player->z > Z_GROUND_LEVEL || player->z_velocity != NO_Z_VELOCITY)
     {
         player->z += player->z_velocity;
         player->z_velocity -= GRAVITY;
     }
 
-    if (player->z < 0)
+    if (player->z < Z_GROUND_LEVEL)
     {
-        player->z = 0;
-        player->z_velocity = 0;
+        player->z = Z_GROUND_LEVEL;
+        player->z_velocity = NO_Z_VELOCITY;
     }
 
 }
@@ -229,7 +254,7 @@ void push_input(Player* player, const int key, const Uint32 time)
 {
 
     // Add key to the buffer <=> shift all elements down
-    for (int i = 9; i > 0; i--)
+    for (int i {9}; i > 0; i--)
     {
         player->buffer[i] = player->buffer[i - 1];
     }
@@ -245,7 +270,7 @@ void push_input(Player* player, const int key, const Uint32 time)
 void clear_buffer(Player* player)
 {
 
-    for (int i = 0; i < 10; i++)
+    for (int i {0}; i < 10; i++)
     {
         player->buffer[i].key = 0;
         player->buffer[i].time = 0;
@@ -352,26 +377,27 @@ void init_enemy(Enemy* enemy, SDL_Texture* texture, const int type, const int x,
     enemy->y = y;                         // Absolute y position in the level
     enemy->h = TARGET_TILE_SIZE;          // Height of the enemy entity
     enemy->w = TARGET_TILE_SIZE;          // Width of the enemy entity
-    enemy->is_alive = TRUE;               // Is enemy still alive?
+    enemy->is_alive = true;               // Is enemy still alive?
     enemy->state = ENEMY_STATE_MOVING;    // State e.g. whether is attacking, etc.
-    enemy->timer = 0;                     // General purpose timer for charging/cooldowns
-    enemy->stun_timer = 0;                // Frames remaining in stun
-    enemy->hurt_timer = 0;                // Counts down when enemy takes damage
-    enemy->facing_right = TRUE;           // Is enemy facing right?
+    enemy->timer = TIMER_ZERO;            // General purpose timer for charging/cooldowns
+    enemy->stun_timer = TIMER_ZERO;       // Frames remaining in stun
+    enemy->hurt_timer = TIMER_ZERO;       // Counts down when enemy takes damage
+    enemy->facing_right = true;           // Is enemy facing right?
     enemy->health_points = ENEMY_BASE_HP; // Health points of the enemy entity
     enemy->attack_box = {0, 0, 0, 0};  // The area of current attack TO the player
-    enemy->last_hit_time = 0;             // Time that passed since last hit received
+    enemy->last_hit_time = TIMER_ZERO;    // Time that passed since last hit received
 
 }
 
 
+// Function used to constantly handle enemies lifetime
 void update_enemies(Enemy* enemies, const int count, const Player* player)
 {
 
-    for (int i = 0; i < count; i++)
+    for (int i {0}; i < count; i++)
     {
 
-        Enemy* enemy = &enemies[i];
+        Enemy* enemy {&enemies[i]};
 
         if (!enemy->is_alive)
         {
@@ -379,16 +405,20 @@ void update_enemies(Enemy* enemies, const int count, const Player* player)
         }
 
         // If stunned, count down and DO NOT move or act
-        if (enemy->stun_timer > 0)
+        if (enemy->stun_timer > TIMER_ZERO)
         {
             enemy->stun_timer--;
             continue;
         }
 
-        // Calculate distance to the player (Pythagorean)
-        const int dx = player->global_x - enemy->x;
-        const int dy = player->global_y - enemy->y;
-        int distance = sqrt(dx * dx + dy * dy);
+        if (enemy->hurt_timer > TIMER_ZERO)
+        {
+            enemy->hurt_timer--;
+        }
+
+        // Calculate distance to the player
+        const int dx {player->global_x - enemy->x}; // X distance
+        const int dy {player->global_y - enemy->y}; // Y distance
 
         // Determine facing direction
         enemy->facing_right = (dx > 0);
@@ -396,11 +426,11 @@ void update_enemies(Enemy* enemies, const int count, const Player* player)
         if (enemy->type == ENEMY_TYPE_CHASER)
         {
             // Chaser move closer to the player constantly (with some margin)
-            if (abs(dx) > TARGET_TILE_SIZE / 2)
+            if (abs(dx) > PLAYER_PRIVACY_ZONE)
             {
                 enemy->x += (dx > 0 ? ENEMY_CHASE_SPEED : -ENEMY_CHASE_SPEED);
             }
-            if (abs(dy) > TARGET_TILE_SIZE / 4)
+            if (abs(dy) > PLAYER_PRIVACY_ZONE)
             {
                 enemy->y += (dy > 0 ? ENEMY_CHASE_SPEED : -ENEMY_CHASE_SPEED);
             }
@@ -415,19 +445,19 @@ void update_enemies(Enemy* enemies, const int count, const Player* player)
                 case ENEMY_STATE_MOVING:
                 {
                     // Align Y axis => line up with the player
-                    if (abs(dy) > 10)
+                    if (abs(dy) > TARGET_TILE_SIZE)
                     {
                         enemy->y += (dy > 0 ? ENEMY_ALIGN_SPEED : -ENEMY_ALIGN_SPEED);
                     }
                     // Maintain specific X distance
-                    int target_x = player->global_x + (dx > 0 ? -CHARGE_TRIGGER_RANGE : CHARGE_TRIGGER_RANGE);
+                    const int target_x = player->global_x + (dx > 0 ? -CHARGE_TRIGGER_RANGE : CHARGE_TRIGGER_RANGE);
                     int move_x = target_x - enemy->x;
-                    if (abs(move_x) > 10)
+                    if (abs(move_x) > TARGET_TILE_SIZE)
                     {
                         enemy->x += (move_x > 0 ? ENEMY_ALIGN_SPEED : - ENEMY_ALIGN_SPEED);
                     }
                     // Trigger charge <=> aligned vertically AND cooldown is ready
-                    if (abs(dy) < 20 && enemy->timer == 0)
+                    if (abs(dy) < TARGET_TILE_SIZE * 2 && enemy->timer == TIMER_ZERO)
                     {
                         enemy->state = ENEMY_STATE_CHARGING;
                         enemy->timer = 60;
@@ -440,17 +470,19 @@ void update_enemies(Enemy* enemies, const int count, const Player* player)
                     // Move very fast in facing direction
                     enemy->x += (enemy->facing_right ? ENEMY_CHARGE_SPEED : -ENEMY_CHARGE_SPEED);
                     enemy->timer--;
-                    if (enemy->timer <= 0)
+                    if (enemy->timer <= TIMER_ZERO)
                     {
                         enemy->state = ENEMY_STATE_MOVING;
                         enemy->timer = 120;
                     }
                     break;
                 }
+                default:
+                    ;
             }
 
             // Cooldown handling if not charging
-            if (enemy->state != ENEMY_STATE_CHARGING && enemy->timer > 0)
+            if (enemy->state != ENEMY_STATE_CHARGING && enemy->timer > TIMER_ZERO)
             {
                 enemy->timer--;
             }
@@ -467,7 +499,13 @@ void update_hitboxes(Player* player)
 {
 
     // Hitbox initially is not present
-    player->attack_box = {0,0,0, 0};
+    player->attack_box =
+    {
+        .x = 0,
+        .y = 0,
+        .h = 0,
+        .w = 0
+    };
 
     // Create hitbox <=> player is currently not idle
     if (player->action_type != IDLE_PLAYER)
@@ -519,7 +557,7 @@ void check_if_enemy_hit(Player* player, Enemy* enemy, const Uint32 current_time)
 {
 
     // Terminate if enemy is not alive or player is not attacking
-    if (enemy->is_alive == FALSE || player->attack_box.w == 0)
+    if (enemy->is_alive == false || player->attack_box.w == 0)
     {
         return;
     }
@@ -544,15 +582,17 @@ void check_if_enemy_hit(Player* player, Enemy* enemy, const Uint32 current_time)
             enemy->hurt_timer = 20;
             if (enemy->health_points <= 0)
             {
-                enemy->is_alive = FALSE;
+                enemy->is_alive = false;
             }
             if (current_time - player->last_score_time < MULTIPLIER_TIMEOUT)
             {
                 player->score_multiplier++;
+                player->multiplier_scale = INITIAL_SCALE * 4.5f;
             }
             else
             {
                 player->score_multiplier = 1;
+                player->multiplier_scale = INITIAL_SCALE;
             }
             player->last_score_time = current_time;
             player->score += BASE_SCORE_MULTIPLIER * player->score_multiplier;
@@ -563,34 +603,35 @@ void check_if_enemy_hit(Player* player, Enemy* enemy, const Uint32 current_time)
 }
 
 
+// Function to check whether ENEMY has hit the PLAYER and handle it correctly
 void check_if_player_hit(Player* player, const Enemy* enemy)
 {
 
-    if (!enemy->is_alive || player->hurt_timer > 0 || enemy->stun_timer > 0)
+    if (!enemy->is_alive || player->hurt_timer > TIMER_ZERO || enemy->stun_timer > TIMER_ZERO)
     {
         return;
     }
 
     // Player body hitbox
-    SDL_Rect player_rect
+    const SDL_Rect player_rect
     {
-        player->global_x,
-        player->global_y,
-        TARGET_TILE_SIZE,
-        TARGET_TILE_SIZE
+        .x = player->global_x,
+        .y = player->global_y,
+        .w = TARGET_TILE_SIZE,
+        .h = TARGET_TILE_SIZE
     };
 
     // Enemy body hitbox
-    SDL_Rect enemy_rect
+    const SDL_Rect enemy_rect
     {
-        enemy->x,
-        enemy->y,
-        enemy->w,
-        enemy->h
+        .x = enemy->x,
+        .y = enemy->y,
+        .w = enemy->w,
+        .h = enemy->h
     };
 
     // AABB collision check
-    int collision =
+    const int collision =
     (
         player_rect.x < enemy_rect.x + enemy_rect.w &&
         player_rect.x + player_rect.w > enemy_rect.x &&
@@ -603,6 +644,34 @@ void check_if_player_hit(Player* player, const Enemy* enemy)
     {
         player_take_damage(player, ENEMY_CONTACT_DAMAGE);
     }
+
+}
+
+
+void reset_player_state(Player* player)
+{
+
+    player->global_x = COLUMNS_PER_SCREEN * TARGET_TILE_SIZE / 2;
+    player->global_y = VISIBLE_ROWS * TARGET_TILE_SIZE / 2;
+    player->z = Z_GROUND_LEVEL;
+    player->z_velocity = NO_Z_VELOCITY;
+    player->screen_x = SCREEN_BEGINNING;
+    player->player_speed = PLAYER_SPEED;
+    player->is_moving = false;
+    player->action_type = IDLE_PLAYER;
+    player->action_timer = TIMER_ZERO;
+    player->facing_right = true;
+    clear_buffer(player);
+    strcpy(player->current_action, "");
+    player->debug_mode = false;
+    player->attack_box = {0, 0, 0, 0};
+    player->score_multiplier = 1;
+    player->multiplier_scale = INITIAL_SCALE;
+    player->last_score_time = TIMER_ZERO;
+    player->score = 0;
+    player->hurt_timer = TIMER_ZERO;
+    player->health_points = PLAYER_MAX_HEALTH;
+    player->max_health_points = PLAYER_MAX_HEALTH;
 
 }
 
