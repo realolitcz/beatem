@@ -16,6 +16,7 @@ void init_sdl();
 SDL_Window* init_window(const char* title, int width, int height);
 SDL_Renderer* init_renderer(SDL_Window* window, int width, int height);
 SDL_Texture* init_texture(const char* path, SDL_Renderer* renderer);
+void init_camera(Camera* camera);
 Level* load_level(const char* path);
 void free_level(Level* level);
 void render_background(SDL_Renderer* renderer, SDL_Texture* texture, const Level* level, const Camera* camera);

@@ -5,7 +5,7 @@ OBJS = game.cpp window.cpp logic.cpp
 CC = g++
 
 #CXXFLAGS specifies used version of C++
-CXXFLAGS = -std=c++17
+CXXFLAGS = -std=c++20
 
 #COMPILER_FLAGS specifies the additional compilation options
 COMPILER_FLAGS = -w #suppresses all warnings

@@ -1,8 +1,6 @@
 #ifndef BEATEM_LOGIC_H
 #define BEATEM_LOGIC_H
-#include <SDL2/SDL_render.h>
-
-#include "window.h"
+#include <SDL2/SDL.h>
 
 struct InputEvent
 {
@@ -68,13 +66,15 @@ struct Level
 {
     int width_in_tiles;
     int height_in_tiles;
-    char** map_layout;
+    char* map_layout;
     //int enemy_count;
     //EnemySpawn* enemies;
 };
 
 struct Camera;
 
+void init_player(Player* player, SDL_Texture* texture);
+void reset_player_state(Player* player);
 void handle_input_event(Player* player, const SDL_Event* event, const Level* current_level);
 void handle_player_movement(Player* player, const Level* current_level,const Uint8* currentKeyStates);
 void handle_camera_movement(const Player* player, const Level* current_level, Camera* camera);
@@ -92,6 +92,5 @@ void update_enemies(Enemy* enemies, int count, const Player* player);
 void update_hitboxes(Player* player);
 void check_if_enemy_hit(Player* player, Enemy* enemy, Uint32 current_time);
 void check_if_player_hit(Player* player, const Enemy* enemy);
-void reset_player_state(Player* player);
 
 #endif //BEATEM_LOGIC_H

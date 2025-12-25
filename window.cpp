@@ -1,4 +1,3 @@
-#include <stdexcept>
 #include <SDL2/SDL.h>
 #include "window.h"
 #include "logic.h"
@@ -10,7 +9,8 @@ void init_sdl()
     if(SDL_Init(SDL_INIT_VIDEO) != 0 ||
         SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest") != SDL_TRUE)
     {
-        throw std::runtime_error("Initialization failed");
+        fprintf(stderr, "Initialization failed: %s\n", SDL_GetError());
+        exit(1);
     }
 }
 
@@ -33,7 +33,8 @@ SDL_Window* init_window(const char* title, const int width, const int height)
 
     if (window == nullptr)
     {
-        throw std::runtime_error("Cannot create window!");
+        fprintf(stderr, "Window creation failed: %s\n", SDL_GetError());
+        exit(1);
     }
 
     return window;
@@ -54,7 +55,8 @@ SDL_Renderer* init_renderer(SDL_Window* window, const int width, const int heigh
 
     if (renderer == nullptr)
     {
-        throw std::runtime_error("Cannot create renderer!");
+        fprintf(stderr, "Renderer creation failed: %s\n", SDL_GetError());
+        exit(1);
     }
 
     return renderer;
@@ -71,7 +73,8 @@ SDL_Texture* init_texture(const char* path, SDL_Renderer* renderer)
 
     if(surface == nullptr)
     {
-        throw std::runtime_error("Cannot initialize surface!");
+        fprintf(stderr, "Surface creation failed: %s\n", SDL_GetError());
+        exit(1);
     }
 
     SDL_Texture* texture {nullptr};
@@ -80,7 +83,8 @@ SDL_Texture* init_texture(const char* path, SDL_Renderer* renderer)
     if (texture == nullptr)
     {
         SDL_FreeSurface(surface);
-        throw std::runtime_error("Cannot initialize texture!");
+        fprintf(stderr, "Texture creation failed: %s\n", SDL_GetError());
+        exit(1);
     }
 
     SDL_FreeSurface(surface);
@@ -90,71 +94,66 @@ SDL_Texture* init_texture(const char* path, SDL_Renderer* renderer)
 }
 
 
-// Function to load level from given level-config file
+// Function used to initialize Camera
+void init_camera(Camera* camera)
+{
+
+    camera->camera_x = SCREEN_BEGINNING;
+    camera->camera_y = SCREEN_BEGINNING;
+    camera->camera_width = SCREEN_WIDTH;
+    camera->camera_height = SCREEN_HEIGHT;
+
+}
+
+
+// // Function to load level from given level-config file
 Level* load_level(const char* path)
 {
 
-    // File handle for level-config file
-    FILE* file {fopen(path, "r")};
-
+    // File handle for level config file
+    FILE* file = fopen(path, "r");
     if (file == nullptr)
     {
-        throw std::runtime_error("Cannot open level file!");
+        fclose(file);
+        fprintf(stderr, "Level loading failed: %s\n", SDL_GetError());
+        exit(1);
     }
 
-    // Allocate memory for the level struct per se
-    Level* level {static_cast<Level*>(malloc(sizeof(Level)))};
+    auto* level {new Level()};
 
-    if (level == nullptr)
-    {
-        free(level);
-        throw std::runtime_error("Cannot allocate level!");
-    }
-
-    // read the preamble of the file i.e. the width and height (first line of the file)
     if (fscanf(file, "%d %d", &level->width_in_tiles, &level->height_in_tiles) != 2)
     {
-        free(level);
         fclose(file);
-        throw std::runtime_error("Invalid level file header");
+        delete level;
+        fprintf(stderr, "Level loading failed: %s\n", SDL_GetError());
+        exit(1);
     }
 
-    // Allocate array of arrays to store level's tile map
-    level->map_layout = static_cast<char**>(malloc(level->height_in_tiles * sizeof(char*)));
+    // Allocate ONE block of memory
+    level->map_layout = new char[level->width_in_tiles * level->height_in_tiles];
 
-    // Allocate each row of the tile map
-    for (int row {0}; row < level->height_in_tiles; row++)
+    for (int i {0}; i < level->height_in_tiles * level->width_in_tiles; i++)
     {
-        level->map_layout[row] = static_cast<char*>(malloc(level->width_in_tiles * sizeof(char)));
-    }
-
-    // Read and store every tile info from the level file
-    for (int row {0}; row < level->height_in_tiles; row++)
-    {
-        for (int column {0}; column < level->width_in_tiles; column++)
-        {
-            fscanf(file, " %c", &level->map_layout[row][column]);
-        }
+        // Read char by char into the linear array
+        fscanf(file, " %c", &level->map_layout[i]);
     }
 
     fclose(file);
-
     return level;
 
 }
 
 
-// Function used to clean-up level memory
 void free_level(Level* level)
 {
 
-    for (int row {0}; row < level->height_in_tiles; row++)
+    if (level != nullptr)
     {
-        free(level->map_layout[row]);
+        // Delete array
+        delete[] level->map_layout;
+        // Delete the struct
+        delete level;
     }
-    free(level->map_layout);
-
-    free(level);
 
 }
 
@@ -229,7 +228,7 @@ void render_background(SDL_Renderer* renderer, SDL_Texture* texture, const Level
     {
         for (int column {start_column}; column < end_column; column++)
         {
-            switch (level->map_layout[row][column])
+            switch (const int index = (row * level->width_in_tiles) + column; level->map_layout[index])
             {
                 case 'F':
                     source = floor;
@@ -449,7 +448,7 @@ void render_stat(SDL_Renderer* renderer, SDL_Texture* charset, const int x, cons
 
     char buffer[BASE_BUFFER_SIZE];
 
-    sprintf(buffer, "%s: %d", label, value);
+    snprintf(buffer, BASE_BUFFER_SIZE, "%s: %d", label, value);
 
     render_text(renderer, charset, x, y, buffer, 1.0f);
 
@@ -491,7 +490,7 @@ void render_multiplier(SDL_Renderer* renderer, SDL_Texture* charset, const Playe
     {
         char buffer[BASE_BUFFER_SIZE];
         // Short, Punchy Text
-        sprintf(buffer, "%dx COMBO!", player->score_multiplier);
+        snprintf(buffer, BASE_BUFFER_SIZE, "%dx COMBO!", player->score_multiplier);
 
         // Circa 3/4 of the screen
         int combo_x {SCREEN_WIDTH - (TARGET_TILE_SIZE * 8)};
@@ -649,7 +648,7 @@ void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player, 
     // Buffer for holding text
     char buffer[BASE_BUFFER_SIZE];
     // Show current action name
-    sprintf(buffer, "ACTION: %s", player->current_action);
+    snprintf(buffer, BASE_BUFFER_SIZE, "ACTION: %s", player->current_action);
     render_text(renderer, charset, SCREEN_BEGINNING, SCREEN_HEIGHT - 2 * TARGET_CHAR_SIZE, buffer,
            INITIAL_SCALE);
 
@@ -664,7 +663,7 @@ void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player, 
         {
                 keyname = "-";
         }
-        sprintf(buffer, "%s", keyname);
+        snprintf(buffer, BASE_BUFFER_SIZE, "%s", keyname);
         render_text(renderer, charset, (strlen("BUFFER: ") * TARGET_CHAR_SIZE) + (i * 16),
                   SCREEN_HEIGHT - TARGET_CHAR_SIZE, buffer, INITIAL_SCALE);
     }

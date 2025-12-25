@@ -4,6 +4,46 @@
 #include "defines.h"
 #include "logic.h"
 
+// Function used to initialize Player entity
+void init_player(Player* player, SDL_Texture* texture)
+{
+
+    player->texture = texture;
+    // Reused logic
+    reset_player_state(player);
+
+}
+
+
+// Function used to reset Player entity (and as a helper to init_player)
+void reset_player_state(Player* player)
+{
+
+    player->global_x = COLUMNS_PER_SCREEN * TARGET_TILE_SIZE / 2;
+    player->global_y = VISIBLE_ROWS * TARGET_TILE_SIZE / 2;
+    player->z = Z_GROUND_LEVEL;
+    player->z_velocity = NO_Z_VELOCITY;
+    player->screen_x = SCREEN_BEGINNING;
+    player->player_speed = PLAYER_SPEED;
+    player->is_moving = false;
+    player->action_type = IDLE_PLAYER;
+    player->action_timer = TIMER_ZERO;
+    player->facing_right = true;
+    clear_buffer(player);
+    snprintf(player->current_action, sizeof(player->current_action), "");
+    player->debug_mode = false;
+    player->attack_box = {0, 0, 0, 0};
+    player->score_multiplier = 1;
+    player->multiplier_scale = INITIAL_SCALE;
+    player->last_score_time = TIMER_ZERO;
+    player->score = 0;
+    player->hurt_timer = TIMER_ZERO;
+    player->health_points = PLAYER_MAX_HEALTH;
+    player->max_health_points = PLAYER_MAX_HEALTH;
+
+}
+
+
 // Function used to handle single click player keyboard events
 void handle_input_event(Player* player, const SDL_Event* event, const Level* current_level)
 {
@@ -297,7 +337,7 @@ void check_combos(Player* player, const Level* current_level,const Uint32 curren
         // Only if sequence happened fast enough
         if (player->buffer[0].time - player->buffer[2].time < COMBO_TIMEOUT)
         {
-            strcpy(player->current_action, "TRIPLE SLASH!");
+            snprintf(player->current_action, sizeof(player->current_action), "TRIPLE SLASH!");
             player->action_type = COMBO_FIRST_PLAYER;
             player->action_timer = COMBO1_FRAMES;
             clear_buffer(player);
@@ -312,7 +352,7 @@ void check_combos(Player* player, const Level* current_level,const Uint32 curren
     {
         if (player->buffer[0].time - player->buffer[1].time < COMBO_TIMEOUT)
         {
-            strcpy(player->current_action, "ULTIMATE BREAKER!");
+            snprintf(player->current_action, sizeof(player->current_action), "ULTIMATE BREAKER!");
             player->action_type = COMBO_SECOND_PLAYER;
             player->action_timer = COMBO2_FRAMES;
             clear_buffer(player);
@@ -327,7 +367,7 @@ void check_combos(Player* player, const Level* current_level,const Uint32 curren
         // Dash timeout is tighter than combo
         if (player->buffer[0].time - player->buffer[1].time < DASH_TIMEOUT)
         {
-            strcpy(player->current_action, "DASH RIGHT >>");
+            snprintf(player->current_action, sizeof(player->current_action), "DASH RIGHT >>");
             if (player->global_x + DASH_DISTANCE < current_level->width_in_tiles * TARGET_TILE_SIZE -  2 * TARGET_TILE_SIZE)
             {
                 player->global_x += DASH_DISTANCE;
@@ -347,7 +387,7 @@ void check_combos(Player* player, const Level* current_level,const Uint32 curren
     {
         if (player->buffer[0].time - player->buffer[1].time < DASH_TIMEOUT)
         {
-            strcpy(player->current_action, "DASH LEFT <<");
+            snprintf(player->current_action, sizeof(player->current_action), "DASH LEFT <<");
             if (player->global_x - DASH_DISTANCE > FLOOR_LEFT_SIDE)
             {
                 player->global_x -= DASH_DISTANCE;
@@ -644,34 +684,6 @@ void check_if_player_hit(Player* player, const Enemy* enemy)
     {
         player_take_damage(player, ENEMY_CONTACT_DAMAGE);
     }
-
-}
-
-
-void reset_player_state(Player* player)
-{
-
-    player->global_x = COLUMNS_PER_SCREEN * TARGET_TILE_SIZE / 2;
-    player->global_y = VISIBLE_ROWS * TARGET_TILE_SIZE / 2;
-    player->z = Z_GROUND_LEVEL;
-    player->z_velocity = NO_Z_VELOCITY;
-    player->screen_x = SCREEN_BEGINNING;
-    player->player_speed = PLAYER_SPEED;
-    player->is_moving = false;
-    player->action_type = IDLE_PLAYER;
-    player->action_timer = TIMER_ZERO;
-    player->facing_right = true;
-    clear_buffer(player);
-    strcpy(player->current_action, "");
-    player->debug_mode = false;
-    player->attack_box = {0, 0, 0, 0};
-    player->score_multiplier = 1;
-    player->multiplier_scale = INITIAL_SCALE;
-    player->last_score_time = TIMER_ZERO;
-    player->score = 0;
-    player->hurt_timer = TIMER_ZERO;
-    player->health_points = PLAYER_MAX_HEALTH;
-    player->max_health_points = PLAYER_MAX_HEALTH;
 
 }
 

@@ -1,9 +1,4 @@
 #define _USE_MATH_DEFINES
-#include <math.h>
-#include <stdexcept>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
 #include <SDL2/SDL.h>
 #include "window.h"
 #include "logic.h"
@@ -24,44 +19,14 @@ int main()
 	SDL_Texture* ghost = init_texture("assets/ghost_spritesheet.bmp", renderer);
 	Level* current_level = load_level("assets/level/level1.txt");
 
-	Player player
-	{
-		.texture = knight,
-		.global_x = COLUMNS_PER_SCREEN * TARGET_TILE_SIZE / 2,
-		.global_y = VISIBLE_ROWS * TARGET_TILE_SIZE / 2,
-		.z = Z_GROUND_LEVEL,
-		.z_velocity = NO_Z_VELOCITY,
-		.screen_x = SCREEN_BEGINNING,
-		.player_speed = PLAYER_SPEED,
-		.is_moving = false,
-		.action_type = IDLE_PLAYER,
-		.action_timer = TIMER_ZERO,
-		.facing_right = true,
-		.buffer = {},
-		.current_action = {0},
-		.debug_mode = false,
-		.attack_box = {0, 0, 0, 0},
-		.score_multiplier = 1,
-		.multiplier_scale = 1.0f,
-		.last_score_time = 0,
-		.score = 0,
-		.hurt_timer = TIMER_ZERO,
-		.health_points = PLAYER_MAX_HEALTH,
-		.max_health_points = PLAYER_MAX_HEALTH
-	};
+	Player player {};
+	init_player(&player, knight);
 
-	Camera camera
-	{
-		.camera_x = SCREEN_BEGINNING,
-		.camera_y = SCREEN_BEGINNING,
-		.camera_width = SCREEN_WIDTH,
-		.camera_height = SCREEN_HEIGHT,
-	};
+	Camera camera {};
+	init_camera(&camera);
 
 	// Holder for all enemies entities
 	Enemy enemies[5];
-
-	// TO MODIFY AND FUNCTIONALIZE
 	init_enemy(&enemies[0], zombie, ENEMY_TYPE_CHASER, 600, 800);
 	init_enemy(&enemies[1], ghost, ENEMY_TYPE_CHARGER, 800, 400);
 
@@ -70,7 +35,7 @@ int main()
 	Uint32 start_time = SDL_GetTicks();
 
 	// Main game loop
-	while (quit != true)
+	while (!quit)
 	{
 		const Uint32 frame_start = SDL_GetTicks();
 
@@ -79,7 +44,7 @@ int main()
 		{
 			if (event.type == SDL_QUIT || event.key.keysym.sym == SDLK_ESCAPE)
 			{
-				quit = 1;
+				quit = true;
 			}
 			if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_n)
 			{
@@ -91,8 +56,7 @@ int main()
 				reset_player_state(&player);
 
 				// Reset camera entity
-				camera.camera_x = SCREEN_BEGINNING;
-				camera.camera_y = SCREEN_BEGINNING;
+				init_camera(&camera);
 
 				start_time = SDL_GetTicks();
 			}
@@ -120,16 +84,10 @@ int main()
 		render_background(renderer, tileset, current_level, &camera);
 		render_statusbar(renderer, charset, &player, (frame_start - start_time) / 1000);
 
-		// FOR TEST
-		for(int i=0; i<5; i++) {
-			// Use the new function instead of SDL_RenderFillRect
+		for(int i=0; i<5; i++)
+		{
 			render_enemy(renderer, &enemies[i], &camera);
-
-			// Decrease enemy hurt timer manually here or in update_enemies
-			//if (enemies[i].hurt_timer > 0) enemies[i].hurt_timer--;
-
 		}
-		// FOR TEST
 
 		if (player.debug_mode)
 		{
@@ -159,6 +117,9 @@ int main()
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyTexture(tileset);
 	SDL_DestroyTexture(charset);
+	SDL_DestroyTexture(knight);
+	SDL_DestroyTexture(zombie);
+	SDL_DestroyTexture(ghost);
 	SDL_Quit();
 
 	return 0;
