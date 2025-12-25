@@ -17,18 +17,13 @@ int main()
 	SDL_Texture* knight = init_texture("assets/knight_spritesheet.bmp", renderer);
 	SDL_Texture* zombie = init_texture("assets/zombie_spritesheet.bmp", renderer);
 	SDL_Texture* ghost = init_texture("assets/ghost_spritesheet.bmp", renderer);
-	Level* current_level = load_level("assets/level/level1.txt");
+	const Level* current_level = load_level("assets/level/level1.txt", zombie, ghost);
 
 	Player player {};
 	init_player(&player, knight);
 
 	Camera camera {};
 	init_camera(&camera);
-
-	// Holder for all enemies entities
-	Enemy enemies[5];
-	init_enemy(&enemies[0], zombie, ENEMY_TYPE_CHASER, 600, 800);
-	init_enemy(&enemies[1], ghost, ENEMY_TYPE_CHARGER, 800, 400);
 
 	SDL_Event event;
 	int quit = false;
@@ -50,7 +45,7 @@ int main()
 			{
 				// Deload and reload current level
 				free_level(current_level);
-				current_level = load_level("assets/level/level1.txt");
+				current_level = load_level("assets/level/level1.txt", zombie, ghost);
 
 				// Reset player entity
 				reset_player_state(&player);
@@ -70,13 +65,20 @@ int main()
 
 		// Hitboxes and collisions
 		update_hitboxes(&player);
-		update_enemies(enemies, 5, &player);
-		for (int i = 0; i < 5; i++)
+		update_enemies(current_level->enemies, &player, current_level);
+		for (int i {0}; i < current_level->enemy_count; i++)
 		{
 			// Check if Player hits Enemy
-			check_if_enemy_hit(&player, &enemies[i], frame_start);
+			check_if_enemy_hit(&player, &current_level->enemies[i], frame_start);
 			// Check if Enemy hits Player
-			check_if_player_hit(&player, &enemies[i]);
+			check_if_player_hit(&player, &current_level->enemies[i]);
+		}
+
+		// Stage completion check
+		if (check_stage_completion(&player, current_level))
+		{
+			printf("STAGE CLEARED!\n");
+			quit = true;
 		}
 
 		// End-tick renderings
@@ -84,9 +86,9 @@ int main()
 		render_background(renderer, tileset, current_level, &camera);
 		render_statusbar(renderer, charset, &player, (frame_start - start_time) / 1000);
 
-		for(int i=0; i<5; i++)
+		for(int i=0; i<current_level->enemy_count; i++)
 		{
-			render_enemy(renderer, &enemies[i], &camera);
+			render_enemy(renderer, &current_level->enemies[i], &camera);
 		}
 
 		if (player.debug_mode)

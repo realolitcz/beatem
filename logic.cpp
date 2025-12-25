@@ -98,42 +98,80 @@ void handle_input_event(Player* player, const SDL_Event* event, const Level* cur
 }
 
 
+// Function to check whether certain tile on the level is walkable
+bool is_walkable(const Level* level, const int x, const int y)
+{
+
+    // Convert pixel coordinates to map indices
+    const int column {x / TARGET_TILE_SIZE};
+    const int row {y / TARGET_TILE_SIZE};
+
+    // Safety check (Bounds)
+    if (column < 0 || column >= level->width_in_tiles || row < 0 || row >= level->height_in_tiles)
+    {
+        // Is not walkable
+        return false;
+    }
+
+    // Get the tile character
+    const int index {(row * level->width_in_tiles) + column};
+    const char tile {level->map_layout[index]};
+
+    // Return true only for walkable tiles
+    // 'F' = Floor, 'E' = Exit. 'W', 'D', 'B' are obstacles.
+    return (tile == 'F' || tile == 'E');
+
+}
+
+
 // Function to handle movement of the player on basis of the current PRESSED AND HOLD key
 void handle_player_movement(Player* player, const Level* current_level, const Uint8* currentKeyStates)
 {
 
     player->is_moving = false;
 
+    // Check the "feet" (z = 0) of the player for collision => center X of player, bottom Y of player.
+    const int player_center_x {player->global_x + (TARGET_TILE_SIZE / 2)};
+    const int player_bottom_y {player->global_y + TARGET_TILE_SIZE - 4};   // -4 gives a tiny bit of leeway
+    const int speed = player->player_speed;
+
+    // Check "Future" position i.e. where we want to walk
     if (currentKeyStates[SDL_SCANCODE_W])
     {
-        if (player->global_y > FLOOR_HORIZON)
+        // If we could go up... (y - speed)
+        if (is_walkable(current_level, player_center_x, player_bottom_y - speed))
         {
-            player->global_y -= player->player_speed;
+            player->global_y -= speed;
             player->is_moving = true;
         }
     }
     if (currentKeyStates[SDL_SCANCODE_S])
     {
-        if (player->global_y < FLOOR_BOTTOM)
+        // If we could go down... (y + speed)
+        if (is_walkable(current_level, player_center_x, player_bottom_y + speed))
         {
-            player->global_y += player->player_speed;
+            player->global_y += speed;
             player->is_moving = true;
         }
     }
     if (currentKeyStates[SDL_SCANCODE_A])
     {
-        if (player->global_x > FLOOR_LEFT_SIDE)
+        // For horizontal, we might want to check the left edge of the sprite, not just center
+        const int left_edge {player->global_x - speed + 4}; // +4 padding
+        if (is_walkable(current_level, left_edge, player_bottom_y))
         {
-            player->global_x -= player->player_speed;
+            player->global_x -= speed;
             player->facing_right = false;
             player->is_moving = true;
         }
     }
     if (currentKeyStates[SDL_SCANCODE_D])
     {
-        if (player->global_x < current_level->width_in_tiles * TARGET_TILE_SIZE -  2 * TARGET_TILE_SIZE)
+        // Check right edge
+        const int right_edge = player->global_x + TARGET_TILE_SIZE + speed - 4; // -4 padding
+        if (is_walkable(current_level, right_edge, player_bottom_y))
         {
-            player->global_x += player->player_speed;
+            player->global_x += speed;
             player->facing_right = true;
             player->is_moving = true;
         }
@@ -431,89 +469,114 @@ void init_enemy(Enemy* enemy, SDL_Texture* texture, const int type, const int x,
 
 
 // Function used to constantly handle enemies lifetime
-void update_enemies(Enemy* enemies, const int count, const Player* player)
+void update_enemies(Enemy* enemies, const Player* player, const Level* current_level)
 {
 
-    for (int i {0}; i < count; i++)
+    for (int i {0}; i < current_level->enemy_count; i++)
     {
+        Enemy* enemy = &enemies[i];
 
-        Enemy* enemy {&enemies[i]};
-
+        // Skip dead enemy
         if (!enemy->is_alive)
         {
             continue;
         }
 
-        // If stunned, count down and DO NOT move or act
+        // Timers
         if (enemy->stun_timer > TIMER_ZERO)
         {
+            // Decrease stun timer of stunned enemy and SKIP
             enemy->stun_timer--;
             continue;
         }
-
         if (enemy->hurt_timer > TIMER_ZERO)
         {
+            // Decrease hurt timer of hurt enemy
             enemy->hurt_timer--;
         }
 
-        // Calculate distance to the player
-        const int dx {player->global_x - enemy->x}; // X distance
-        const int dy {player->global_y - enemy->y}; // Y distance
-
-        // Determine facing direction
+        // Calculate distance to the Player
+        const int dx {player->global_x - enemy->x};
+        const int dy {player->global_y - enemy->y};
         enemy->facing_right = (dx > 0);
+
+        // Define "Feet" (z = 0) for collision (Bottom Center of the sprite)
+        const int feet_x {enemy->x + (TARGET_TILE_SIZE / 2)};
+        const int feet_y {enemy->y + TARGET_TILE_SIZE - 2};
 
         if (enemy->type == ENEMY_TYPE_CHASER)
         {
-            // Chaser move closer to the player constantly (with some margin)
             if (abs(dx) > PLAYER_PRIVACY_ZONE)
             {
-                enemy->x += (dx > 0 ? ENEMY_CHASE_SPEED : -ENEMY_CHASE_SPEED);
+                const int move_x {(dx > 0 ? ENEMY_CHASE_SPEED : -ENEMY_CHASE_SPEED)};
+                // Check if the NEXT X position is walkable
+                if (is_walkable(current_level, feet_x + move_x, feet_y))
+                {
+                    enemy->x += move_x;
+                }
             }
             if (abs(dy) > PLAYER_PRIVACY_ZONE)
             {
-                enemy->y += (dy > 0 ? ENEMY_CHASE_SPEED : -ENEMY_CHASE_SPEED);
+                const int move_y {(dy > 0 ? ENEMY_CHASE_SPEED : -ENEMY_CHASE_SPEED)};
+                // Check if NEXT Y position is walkable
+                if (is_walkable(current_level, feet_x, feet_y + move_y))
+                {
+                    enemy->y += move_y;
+                }
             }
-            // ADD COLLISION WITH PLAYER AND HURTING
         }
-
-        if (enemy->type == ENEMY_TYPE_CHARGER)
+        else if (enemy->type == ENEMY_TYPE_CHARGER)
         {
             switch (enemy->state)
             {
-                // Keep distance and line up
                 case ENEMY_STATE_MOVING:
                 {
-                    // Align Y axis => line up with the player
+                    // Align Y
                     if (abs(dy) > TARGET_TILE_SIZE)
                     {
-                        enemy->y += (dy > 0 ? ENEMY_ALIGN_SPEED : -ENEMY_ALIGN_SPEED);
+                        const int move_y {(dy > 0 ? ENEMY_ALIGN_SPEED : -ENEMY_ALIGN_SPEED)};
+                        if (is_walkable(current_level, feet_x, feet_y + move_y))
+                        {
+                            enemy->y += move_y;
+                        }
                     }
-                    // Maintain specific X distance
-                    const int target_x = player->global_x + (dx > 0 ? -CHARGE_TRIGGER_RANGE : CHARGE_TRIGGER_RANGE);
-                    int move_x = target_x - enemy->x;
-                    if (abs(move_x) > TARGET_TILE_SIZE)
+                    // Align X (Maintenance distance)
+                    const int target_x {player->global_x + (dx > 0 ? -CHARGE_TRIGGER_RANGE : CHARGE_TRIGGER_RANGE)};
+                    const int move_x_diff {target_x - enemy->x};
+                    if (abs(move_x_diff) > TARGET_TILE_SIZE)
                     {
-                        enemy->x += (move_x > 0 ? ENEMY_ALIGN_SPEED : - ENEMY_ALIGN_SPEED);
+                        const int move_x {(move_x_diff > 0 ? ENEMY_ALIGN_SPEED : -ENEMY_ALIGN_SPEED)};
+                        if (is_walkable(current_level, feet_x + move_x, feet_y))
+                        {
+                            enemy->x += move_x;
+                        }
                     }
-                    // Trigger charge <=> aligned vertically AND cooldown is ready
+                    // Trigger Charge
                     if (abs(dy) < TARGET_TILE_SIZE * 2 && enemy->timer == TIMER_ZERO)
                     {
                         enemy->state = ENEMY_STATE_CHARGING;
-                        enemy->timer = 60;
+                        enemy->timer = BASE_TIMER;
                     }
                     break;
                 }
-                // Charging
                 case ENEMY_STATE_CHARGING:
                 {
-                    // Move very fast in facing direction
-                    enemy->x += (enemy->facing_right ? ENEMY_CHARGE_SPEED : -ENEMY_CHARGE_SPEED);
-                    enemy->timer--;
-                    if (enemy->timer <= TIMER_ZERO)
+                    const int charge_speed {(enemy->facing_right ? ENEMY_CHARGE_SPEED : -ENEMY_CHARGE_SPEED)};
+                    // If hitting a wall, STOP charging immediately
+                    if (!is_walkable(current_level, feet_x + charge_speed, feet_y))
                     {
                         enemy->state = ENEMY_STATE_MOVING;
-                        enemy->timer = 120;
+                        enemy->timer = BASE_TIMER * 2; // Long cooldown penalty
+                    }
+                    else
+                    {
+                        enemy->x += charge_speed;
+                        enemy->timer--;
+                        if (enemy->timer <= TIMER_ZERO)
+                        {
+                            enemy->state = ENEMY_STATE_MOVING;
+                            enemy->timer = BASE_TIMER * 2;
+                        }
                     }
                     break;
                 }
@@ -521,16 +584,12 @@ void update_enemies(Enemy* enemies, const int count, const Player* player)
                     ;
             }
 
-            // Cooldown handling if not charging
             if (enemy->state != ENEMY_STATE_CHARGING && enemy->timer > TIMER_ZERO)
             {
                 enemy->timer--;
             }
-
         }
-
     }
-
 }
 
 
@@ -687,3 +746,40 @@ void check_if_player_hit(Player* player, const Enemy* enemy)
 
 }
 
+
+// Function used to check whether level-end conditions has been met
+bool check_stage_completion(const Player* player, const Level* level)
+{
+
+    // Check if all enemies are dead
+    for (int i {0}; i < level->enemy_count; i++)
+    {
+        if (level->enemies[i].is_alive)
+        {
+            // Found a survivor, stage not done
+            return false;
+        }
+    }
+
+    // Calculate Player's center tile
+    const int center_x {player->global_x + TARGET_TILE_SIZE / 2};
+    const int center_y {player->global_y + TARGET_TILE_SIZE / 2};
+    const int col {center_x / TARGET_TILE_SIZE};
+    const int row {center_y / TARGET_TILE_SIZE};
+    const int index {row * level->width_in_tiles + col};
+
+    // Validation: index bounds
+    if (index < 0 || index >= level->width_in_tiles * level->height_in_tiles)
+    {
+        return false;
+    }
+
+    // Check for Exit Tile
+    if (level->map_layout[index] == 'E')
+    {
+        return true;
+    }
+
+    return false;
+
+}

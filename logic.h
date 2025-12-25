@@ -67,8 +67,8 @@ struct Level
     int width_in_tiles;
     int height_in_tiles;
     char* map_layout;
-    //int enemy_count;
-    //EnemySpawn* enemies;
+    int enemy_count;
+    Enemy* enemies;
 };
 
 struct Camera;
@@ -88,9 +88,10 @@ void push_input(Player* player, int key, Uint32 time);
 void check_combos(Player* player, const Level* current_level,Uint32 current_time);
 void clear_buffer(Player* player);
 void init_enemy(Enemy* enemy, SDL_Texture* texture, int type, int x, int y);
-void update_enemies(Enemy* enemies, int count, const Player* player);
+void update_enemies(Enemy* enemies, const Player* player, const Level* current_level);
 void update_hitboxes(Player* player);
 void check_if_enemy_hit(Player* player, Enemy* enemy, Uint32 current_time);
 void check_if_player_hit(Player* player, const Enemy* enemy);
+bool check_stage_completion(const Player* player, const Level* level);
 
 #endif //BEATEM_LOGIC_H

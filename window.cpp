@@ -107,11 +107,11 @@ void init_camera(Camera* camera)
 
 
 // // Function to load level from given level-config file
-Level* load_level(const char* path)
+Level* load_level(const char* path, SDL_Texture* zombie, SDL_Texture* ghost)
 {
 
     // File handle for level config file
-    FILE* file = fopen(path, "r");
+    FILE* file {fopen(path, "r")};
     if (file == nullptr)
     {
         fclose(file);
@@ -119,38 +119,74 @@ Level* load_level(const char* path)
         exit(1);
     }
 
+    // Allocate new level
     auto* level {new Level()};
 
-    if (fscanf(file, "%d %d", &level->width_in_tiles, &level->height_in_tiles) != 2)
+    // Preamble read: width, height, enemy count
+    if (fscanf(file, "%d %d %d", &level->width_in_tiles, &level->height_in_tiles, &level->enemy_count) != 3)
     {
         fclose(file);
         delete level;
-        fprintf(stderr, "Level loading failed: %s\n", SDL_GetError());
+        fprintf(stderr, "Invalid level file header (Preamble mismatch): %s\n", SDL_GetError());
         exit(1);
     }
 
-    // Allocate ONE block of memory
+    // Map allocation
     level->map_layout = new char[level->width_in_tiles * level->height_in_tiles];
 
+    // Read map
     for (int i {0}; i < level->height_in_tiles * level->width_in_tiles; i++)
     {
         // Read char by char into the linear array
         fscanf(file, " %c", &level->map_layout[i]);
     }
 
+    // Enemy allocation
+    if (level->enemy_count > 0)
+    {
+        level->enemies = new Enemy[level->enemy_count];
+
+        for (int i {0}; i < level->enemy_count; i++)
+        {
+            int type {0}, x {0}, y {0};
+            // Read enemy data
+            if (fscanf(file, "%d %d %d", &type, &x, &y) != 3)
+            {
+                // Validation failed: Preamble said there were more enemies than we found
+                fclose(file);
+                free_level(level);
+                fprintf(stderr, "Invalid enemy data in level file\n");
+                exit(1);
+            }
+            SDL_Texture* texture {type == ENEMY_TYPE_CHARGER ? ghost : zombie};
+            init_enemy(&level->enemies[i], texture, type, x, y);
+        }
+    }
+    else
+    {
+        level->enemies = nullptr;
+    }
+
     fclose(file);
+
+    printf("Level loaded: Size: %dx%d, Enemies: %d\n", level->width_in_tiles, level->height_in_tiles,
+           level->enemy_count);
+
     return level;
 
 }
 
 
-void free_level(Level* level)
+// Function used to clean-up memory after level
+void free_level(const Level* level)
 {
 
     if (level != nullptr)
     {
-        // Delete array
+        // Delete level array
         delete[] level->map_layout;
+        // Delete enemy array
+        delete[] level->enemies;
         // Delete the struct
         delete level;
     }
@@ -171,7 +207,7 @@ void render_background(SDL_Renderer* renderer, SDL_Texture* texture, const Level
         .h = SOURCE_TILE_SIZE
     };
 
-    // Marker of tiles in the tileset
+    // Markers of tiles in the tileset
     constexpr SDL_Rect floor
     {
         .x = 0,
@@ -196,6 +232,13 @@ void render_background(SDL_Renderer* renderer, SDL_Texture* texture, const Level
     constexpr SDL_Rect darkness
     {
         .x = 32,
+        .y = 16,
+        .w = SOURCE_TILE_SIZE,
+        .h = SOURCE_TILE_SIZE
+    };
+    constexpr SDL_Rect exit
+    {
+        .x = 0,
         .y = 16,
         .w = SOURCE_TILE_SIZE,
         .h = SOURCE_TILE_SIZE
@@ -241,6 +284,9 @@ void render_background(SDL_Renderer* renderer, SDL_Texture* texture, const Level
                     break;
                 case 'D':
                     source = darkness;
+                    break;
+                case 'E':
+                    source = exit;
                     break;
                 case ' ':
                 default:

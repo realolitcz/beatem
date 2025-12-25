@@ -62,6 +62,7 @@ constexpr int COLUMNS_PER_SCREEN     {SCREEN_WIDTH / TARGET_TILE_SIZE};
 constexpr int BASE_BUFFER_SIZE       {128};
 constexpr int SCREEN_BEGINNING       {0};
 constexpr int TIMER_ZERO             {0};
+constexpr int BASE_TIMER             {60};
 constexpr float INITIAL_SCALE        {1.0f};
 constexpr float INITIAL_SCALE_DECR   {0.05f};
 
