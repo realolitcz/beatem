@@ -1,15 +1,29 @@
 #include <SDL2/SDL.h>
-#include <stdexcept>
 #include "window.h"
-#include "defines.h"
 #include "logic.h"
+#include "defines.h"
+
+// Initializer function for game session struct
+void init_game_session(GameSession* game_session)
+{
+
+    game_session->state = STATE_MENU;
+    game_session->current_level_index = 0;
+    strcpy(game_session->player_name, "");
+    game_session->menu_selection = 0;
+    game_session->high_scores = nullptr;
+    game_session->total_scores = 0;
+    game_session->current_page = 0;
+
+}
+
 
 // Function used to initialize Player entity
 void init_player(Player* player, SDL_Texture* texture)
 {
 
     player->texture = texture;
-    // Reused logic
+    // DRY-ed logic from resetting
     reset_player_state(player);
 
 }
@@ -23,14 +37,11 @@ void reset_player_state(Player* player)
     player->global_y = VISIBLE_ROWS * TARGET_TILE_SIZE / 2;
     player->z = Z_GROUND_LEVEL;
     player->z_velocity = NO_Z_VELOCITY;
-    player->screen_x = SCREEN_BEGINNING;
-    player->player_speed = PLAYER_SPEED;
     player->is_moving = false;
     player->action_type = IDLE_PLAYER;
     player->action_timer = TIMER_ZERO;
     player->facing_right = true;
     clear_buffer(player);
-    snprintf(player->current_action, sizeof(player->current_action), "");
     player->debug_mode = false;
     player->attack_box = {0, 0, 0, 0};
     player->score_multiplier = 1;
@@ -39,7 +50,61 @@ void reset_player_state(Player* player)
     player->score = 0;
     player->hurt_timer = TIMER_ZERO;
     player->health_points = PLAYER_MAX_HEALTH;
-    player->max_health_points = PLAYER_MAX_HEALTH;
+
+}
+
+
+// Helper function used to conduct preparatory actions for level change
+void prepare_player_for_next_level(Player* player)
+{
+
+    // Backup Score
+    const int kept_score = player->score;
+
+    // Perform standard reset (clears buffers, position, etc.)
+    reset_player_state(player);
+
+    // Restore Score
+    player->score = kept_score;
+
+    // Ensure full health for next level
+    player->health_points = PLAYER_MAX_HEALTH;
+
+}
+
+
+// Handler-wrapper function for UI guys
+void handle_ui_input(GameSession* session, const SDL_Event* event)
+{
+
+    switch (session->state)
+    {
+        case STATE_MENU:
+            handle_menu_input(session, event);
+            break;
+        case STATE_NAME_INPUT:
+            handle_name_input(session, event);
+            break;
+        case STATE_GAME_OVER:
+            handle_game_over_input(session, event);
+            break;
+        case STATE_SCORES:
+            handle_score_input(session, event);
+            break;
+        default:
+            break;
+    }
+
+}
+
+
+// Little helper function to handle resetting game to menu
+void reset_game_to_menu(Level** level, const char* path, const TextureAssets* assets, Player* player, Camera* camera,
+                        GameSession* session)
+{
+
+    change_level(level, path, assets, player, camera, true);
+    session->current_level_index = 0;
 
 }
 
@@ -83,13 +148,20 @@ void handle_input_event(Player* player, const SDL_Event* event, const Level* cur
             }
             if (player->action_timer == 0)
             {
-                if (key == SDLK_k)
+                if (key == SDLK_k || key == SDLK_l)
                 {
-                    player_light_attack(player);
-                }
-                if (key == SDLK_l)
-                {
-                    player_heavy_attack(player);
+                    // Are we in the air?
+                    if (player->z > Z_GROUND_LEVEL)
+                    {
+                        // Pressing K or L in air triggers specific move
+                        player_try_attack(player, AERIAL_ATTACK_PLAYER);
+                    }
+                    else
+                    {
+                        // Ground attacks
+                        if (key == SDLK_k) player_try_attack(player, LIGHT_ATTACK_PLAYER);
+                        if (key == SDLK_l) player_try_attack(player, HEAVY_ATTACK_PLAYER);
+                    }
                 }
             }
         }
@@ -133,7 +205,7 @@ void handle_player_movement(Player* player, const Level* current_level, const Ui
     // Check the "feet" (z = 0) of the player for collision => center X of player, bottom Y of player.
     const int player_center_x {player->global_x + (TARGET_TILE_SIZE / 2)};
     const int player_bottom_y {player->global_y + TARGET_TILE_SIZE - 4};   // -4 gives a tiny bit of leeway
-    const int speed = player->player_speed;
+    constexpr int speed = PLAYER_SPEED;
 
     // Check "Future" position i.e. where we want to walk
     if (currentKeyStates[SDL_SCANCODE_W])
@@ -184,11 +256,13 @@ void handle_player_movement(Player* player, const Level* current_level, const Ui
 void handle_camera_movement(const Player* player, const Level* current_level, Camera* camera)
 {
 
-    if (player->screen_x > GRACE_ZONE_END)
+    const int screen_x = player->global_x - camera->camera_x;
+
+    if (screen_x > GRACE_ZONE_END)
     {
         camera->camera_x = player->global_x - GRACE_ZONE_END;
     }
-    if (player->screen_x < GRACE_ZONE_START)
+    if (screen_x < GRACE_ZONE_START)
     {
         camera->camera_x = player->global_x - GRACE_ZONE_START;
     }
@@ -205,27 +279,42 @@ void handle_camera_movement(const Player* player, const Level* current_level, Ca
 }
 
 
-// Function to handle the light/fast (action X) player attack
-void player_light_attack(Player* player)
+// Helper function for player attacks
+void player_try_attack(Player* player, const int attack_type)
 {
 
-    if (player->action_timer == TIMER_ZERO)
+    // Cannot attack if already busy
+    if (player->action_timer > TIMER_ZERO)
     {
-        player->action_type = LIGHT_ATTACK_PLAYER;
-        player->action_timer = ATTACK_LIGHT_FRAMES;
+        return;
     }
 
-}
-
-
-// Function to handle heavy/slow (action Y) player attack
-void player_heavy_attack(Player* player)
-{
-
-    if (player->action_timer == TIMER_ZERO)
+    // Aerial logic
+    if (attack_type == AERIAL_ATTACK_PLAYER && player->z <= Z_GROUND_LEVEL)
     {
-        player->action_type = HEAVY_ATTACK_PLAYER;
-        player->action_timer = ATTACK_HEAVY_FRAMES;
+        return;
+    }
+    if (attack_type != AERIAL_ATTACK_PLAYER && player->z > Z_GROUND_LEVEL)
+    {
+        return;
+    }
+
+    // Execution
+    player->action_type = attack_type;
+
+    switch (attack_type)
+    {
+        case LIGHT_ATTACK_PLAYER:
+            player->action_timer = ATTACK_LIGHT_FRAMES;
+            break;
+        case HEAVY_ATTACK_PLAYER:
+            player->action_timer = ATTACK_HEAVY_FRAMES;
+            break;
+        case AERIAL_ATTACK_PLAYER:
+            player->action_timer = AERIAL_ATTACK_FRAMES;
+            break;
+        default:
+            ;
     }
 
 }
@@ -358,24 +447,20 @@ void clear_buffer(Player* player)
 
 
 // Function to check whether certain combo should be executed
-void check_combos(Player* player, const Level* current_level,const Uint32 current_time)
+void check_combos(Player* player, const Level* current_level, const Uint32 current_time)
 {
 
-    // If keys were pressed in too big delay, we do not conduct combo
+    // Safety Timeout
     if (current_time - player->buffer[0].time > COMBO_TIMEOUT)
     {
         return;
     }
 
-    // First combo: triple light (k - k - k) attack
-    if (player->buffer[0].key == SDLK_k &&
-        player->buffer[1].key == SDLK_k &&
-        player->buffer[2].key == SDLK_k)
+    // Combo 1: Triple Light (K - K - K)
+    if (player->buffer[0].key == SDLK_k && player->buffer[1].key == SDLK_k && player->buffer[2].key == SDLK_k)
     {
-        // Only if sequence happened fast enough
         if (player->buffer[0].time - player->buffer[2].time < COMBO_TIMEOUT)
         {
-            snprintf(player->current_action, sizeof(player->current_action), "TRIPLE SLASH!");
             player->action_type = COMBO_FIRST_PLAYER;
             player->action_timer = COMBO1_FRAMES;
             clear_buffer(player);
@@ -383,14 +468,11 @@ void check_combos(Player* player, const Level* current_level,const Uint32 curren
         }
     }
 
-    // Second combo: light - heavy - light (l - k - l) attack
-    if (player->buffer[0].key == SDLK_k &&
-        player->buffer[1].key == SDLK_l &&
-        player->buffer[2].key == SDLK_k)
+    // Combo 2: Light - Heavy - Light (K - L - K)
+    if (player->buffer[0].key == SDLK_k && player->buffer[1].key == SDLK_l && player->buffer[2].key == SDLK_k)
     {
         if (player->buffer[0].time - player->buffer[1].time < COMBO_TIMEOUT)
         {
-            snprintf(player->current_action, sizeof(player->current_action), "ULTIMATE BREAKER!");
             player->action_type = COMBO_SECOND_PLAYER;
             player->action_timer = COMBO2_FRAMES;
             clear_buffer(player);
@@ -398,50 +480,52 @@ void check_combos(Player* player, const Level* current_level,const Uint32 curren
         }
     }
 
-    // Right dash (right - right)
-    if (player->buffer[0].key == SDLK_d &&
-        player->buffer[1].key == SDLK_d)
+    // Check for Double Tap (Same key twice, fast)
+    if (player->buffer[0].key == player->buffer[1].key &&
+        player->buffer[0].time - player->buffer[1].time < DASH_TIMEOUT)
     {
-        // Dash timeout is tighter than combo
-        if (player->buffer[0].time - player->buffer[1].time < DASH_TIMEOUT)
+        int direction {0};
+        // Right
+        if (player->buffer[0].key == SDLK_d)
         {
-            snprintf(player->current_action, sizeof(player->current_action), "DASH RIGHT >>");
-            if (player->global_x + DASH_DISTANCE < current_level->width_in_tiles * TARGET_TILE_SIZE -  2 * TARGET_TILE_SIZE)
+            direction = 1;
+        }
+        // Left
+        else if (player->buffer[0].key == SDLK_a)
+        {
+            direction = -1;
+        }
+        if (direction != 0)
+        {
+            const int feet_y = player->global_y + TARGET_TILE_SIZE - 4;
+            constexpr int step_size = TARGET_TILE_SIZE / 2;
+
+            for (int step {0}; step < DASH_DISTANCE; step += step_size)
             {
-                player->global_x += DASH_DISTANCE;
-            }
-            else
-            {
-                player->global_x = current_level->width_in_tiles * TARGET_TILE_SIZE - 2 * TARGET_TILE_SIZE;
+                const int next_x = player->global_x + (direction * step_size);
+
+                // Collision Edge: Right side (+Width) or Left side (+0) + Padding
+                const int collision_edge = (direction > 0)
+                    ? (next_x + TARGET_TILE_SIZE - 4)
+                    : (next_x + 4);
+
+                // Boundary Checks
+                const bool out_of_bounds = (direction > 0)
+                    ? (next_x >= current_level->width_in_tiles * TARGET_TILE_SIZE - 2 * TARGET_TILE_SIZE)
+                    : (next_x <= FLOOR_LEFT_SIDE);
+
+                if (out_of_bounds || !is_walkable(current_level, collision_edge, feet_y))
+                {
+                    break; // Hit wall or border
+                }
+
+                // Move
+                player->global_x = next_x;
             }
             clear_buffer(player);
             return;
         }
     }
-
-    // Left dash (left - left)
-    if (player->buffer[0].key == SDLK_a &&
-        player->buffer[1].key == SDLK_a)
-    {
-        if (player->buffer[0].time - player->buffer[1].time < DASH_TIMEOUT)
-        {
-            snprintf(player->current_action, sizeof(player->current_action), "DASH LEFT <<");
-            if (player->global_x - DASH_DISTANCE > FLOOR_LEFT_SIDE)
-            {
-                player->global_x -= DASH_DISTANCE;
-            }
-            else
-            {
-                player->global_x = FLOOR_LEFT_SIDE;
-            }
-            clear_buffer(player);
-            return;
-        }
-    }
-
-    // DISCLAIMER TO ADDITIONAL B.c. - adding combos for programmer is easy with this construction -> we need only
-    // to include additional conditional here and handle it e.g. with some new function
-
 }
 
 
@@ -453,8 +537,6 @@ void init_enemy(Enemy* enemy, SDL_Texture* texture, const int type, const int x,
     enemy->texture = texture;             // Spritesheet
     enemy->x = x;                         // Absolute x position in the level
     enemy->y = y;                         // Absolute y position in the level
-    enemy->h = TARGET_TILE_SIZE;          // Height of the enemy entity
-    enemy->w = TARGET_TILE_SIZE;          // Width of the enemy entity
     enemy->is_alive = true;               // Is enemy still alive?
     enemy->state = ENEMY_STATE_MOVING;    // State e.g. whether is attacking, etc.
     enemy->timer = TIMER_ZERO;            // General purpose timer for charging/cooldowns
@@ -462,7 +544,6 @@ void init_enemy(Enemy* enemy, SDL_Texture* texture, const int type, const int x,
     enemy->hurt_timer = TIMER_ZERO;       // Counts down when enemy takes damage
     enemy->facing_right = true;           // Is enemy facing right?
     enemy->health_points = ENEMY_BASE_HP; // Health points of the enemy entity
-    enemy->attack_box = {0, 0, 0, 0};  // The area of current attack TO the player
     enemy->last_hit_time = TIMER_ZERO;    // Time that passed since last hit received
 
 }
@@ -643,6 +724,14 @@ void update_hitboxes(Player* player)
                                        player->global_x - player->attack_box.w + (TARGET_TILE_SIZE - COMBO_SECOND_X_OFFSET);
                 player->attack_box.y = player->global_y;
                 break;
+            case AERIAL_ATTACK_PLAYER:
+                player->attack_box.w = AERIAL_ATTACK_WIDTH;
+                player->attack_box.h = AERIAL_ATTACK_HEIGHT;
+                player->attack_box.x = player->facing_right ?
+                                       player->global_x + AERIAL_ATTACK_X_OFFSET :
+                                       player->global_x - player->attack_box.w + (TARGET_TILE_SIZE - AERIAL_ATTACK_X_OFFSET);
+                player->attack_box.y = player->global_y;
+                break;
             default:
                 break;
         }
@@ -664,9 +753,9 @@ void check_if_enemy_hit(Player* player, Enemy* enemy, const Uint32 current_time)
     // Check whether an enemy is within the attack hitbox (AABB)
     const int collision =
     (
-        player->attack_box.x < enemy->x + enemy->w &&
+        player->attack_box.x < enemy->x + ENEMY_SIZE &&
         player->attack_box.x + player->attack_box.w > enemy->x &&
-        player->attack_box.y < enemy->y + enemy->h &&
+        player->attack_box.y < enemy->y + ENEMY_SIZE &&
         player->attack_box.y + player->attack_box.h > enemy->y
     );
 
@@ -706,7 +795,7 @@ void check_if_enemy_hit(Player* player, Enemy* enemy, const Uint32 current_time)
 void check_if_player_hit(Player* player, const Enemy* enemy)
 {
 
-    if (!enemy->is_alive || player->hurt_timer > TIMER_ZERO || enemy->stun_timer > TIMER_ZERO)
+    if (!enemy->is_alive || player->hurt_timer > TIMER_ZERO || enemy->stun_timer > TIMER_ZERO || player->z > Z_GROUND_LEVEL)
     {
         return;
     }
@@ -725,8 +814,8 @@ void check_if_player_hit(Player* player, const Enemy* enemy)
     {
         .x = enemy->x,
         .y = enemy->y,
-        .w = enemy->w,
-        .h = enemy->h
+        .w = ENEMY_SIZE,
+        .h = ENEMY_SIZE
     };
 
     // AABB collision check
@@ -738,8 +827,7 @@ void check_if_player_hit(Player* player, const Enemy* enemy)
         player_rect.y + player_rect.h > enemy_rect.y
     );
 
-    // Z-Axis check (jumping over enemy) <=> if player is high enough, they do not take damage (with a little leeway)
-    if (collision && player->z < TARGET_TILE_SIZE)
+    if (collision)
     {
         player_take_damage(player, ENEMY_CONTACT_DAMAGE);
     }
@@ -782,4 +870,278 @@ bool check_stage_completion(const Player* player, const Level* level)
 
     return false;
 
+}
+
+
+// Function used to handle main menu input
+void handle_menu_input(GameSession *session, const SDL_Event *event)
+{
+
+    if (event->type == SDL_KEYDOWN)
+    {
+        switch (event->key.keysym.sym)
+        {
+            case SDLK_UP:
+                session->menu_selection--;
+                if (session->menu_selection < 0)
+                {
+                    session->menu_selection = 2;
+                }
+                break;
+            case SDLK_DOWN:
+                session->menu_selection++;
+                if (session->menu_selection > 2)
+                {
+                    session->menu_selection = 0;
+                }
+                break;
+            case SDLK_RETURN:
+            case SDLK_SPACE:
+                // Start
+                if (session->menu_selection == 0)
+                {
+                    // Go to name entry first
+                    session->state = STATE_GAMEPLAY;
+                }
+                // Scores
+                else if (session->menu_selection == 1)
+                {
+                    session->high_scores = load_scores(&session->total_scores);
+                    session->state = STATE_SCORES;
+                }
+                // Exit
+                else if (session->menu_selection == 2)
+                {
+                    SDL_Event quit_event;
+                    quit_event.type = SDL_QUIT;
+                    SDL_PushEvent(&quit_event);
+                }
+                break;
+            default:
+                ;
+        }
+    }
+
+}
+
+
+// Function used to handle Player's name input
+void handle_name_input(GameSession *session, const SDL_Event *event)
+{
+
+    if (event->type == SDL_KEYDOWN)
+    {
+        const int key = event->key.keysym.sym;
+        size_t len = strlen(session->player_name);
+
+        // Backspace handling
+        if (key == SDLK_BACKSPACE && len > 0)
+        {
+            session->player_name[--len] = '\0';
+        }
+        // Enter to confirm
+        else if (key == SDLK_RETURN && len > 0)
+        {
+            // Start the game
+            session->state = STATE_SCORES;
+        }
+        // Handle a-z letters
+        else if (key >= SDLK_a && key <= SDLK_z && len < MAX_NAME_LENGTH - 1)
+        {
+            session->player_name[len++] = static_cast<char>(key);
+            session->player_name[len + 1] = '\0';
+        }
+    }
+
+}
+
+
+// Function used to handle losing => prompt menu or continue
+void handle_game_over_input(GameSession *session, const SDL_Event *event)
+{
+
+    if (event->type == SDL_KEYDOWN)
+    {
+        if (event->key.keysym.sym == SDLK_y)
+        {
+            // Go back to the menu
+            session->state = STATE_MENU;
+        }
+        else if (event->key.keysym.sym == SDLK_n)
+        {
+            session->state = STATE_GAMEPLAY;
+        }
+    }
+
+}
+
+void update_gameplay(GameSession *session, Player *player, Level **current_level,
+                     Camera *camera, TextureAssets *assets,
+                     const char *level_files[], int max_levels, Uint32 current_time)
+{
+    // 1. Handle Input & Movement
+    const Uint8* currentKeyStates = SDL_GetKeyboardState(nullptr);
+    handle_player_movement(player, *current_level, currentKeyStates);
+    handle_camera_movement(player, *current_level, camera);
+
+    // 2. Update Combat Logic
+    update_hitboxes(player);
+
+    // Note: Dereference *current_level to get the actual pointer
+    update_enemies((*current_level)->enemies, player, *current_level);
+
+    for (int i = 0; i < (*current_level)->enemy_count; i++)
+    {
+        check_if_enemy_hit(player, &(*current_level)->enemies[i], current_time);
+        check_if_player_hit(player, &(*current_level)->enemies[i]);
+    }
+
+    // 3. Update Physics
+    handle_gravity(player);
+    handle_attack(player);
+
+    // 4. Check Game Over
+    if (player->health_points <= 0)
+    {
+        session->state = STATE_GAME_OVER;
+    }
+
+    // 5. Check Stage Completion
+    if (check_stage_completion(player, *current_level))
+    {
+        session->current_level_index++;
+
+        if (session->current_level_index < max_levels)
+        {
+            // Load Next Stage (Keep stats)
+            // Pass the pointer to the pointer
+            change_level(current_level, level_files[session->current_level_index], assets, player, camera, false);
+        }
+        else
+        {
+            // Game Finished -> Victory Screen
+            session->state = STATE_GAME_OVER;
+            session->current_level_index = 0;
+        }
+    }
+}
+
+
+
+// Helper function used as comparator for qsort (descending order)
+int compare_scores(const void* a, const void* b)
+{
+
+    const auto* entryA {static_cast<const ScoreEntry *>(a)};
+    const auto* entryB {static_cast<const ScoreEntry *>(b)};
+    // Higher score comes first
+    return (entryB->score - entryA->score);
+
+}
+
+
+// Helper function used to save given score to scores file
+void save_score(const char* name, const int score)
+{
+
+    FILE* file {fopen(SCORES_FILE, "a")};
+
+    if (file == nullptr)
+    {
+        fprintf(stderr, "Could not open scores file\n");
+        exit(1);
+    }
+
+    fprintf(file, "%s %d\n", name, score);
+    fclose(file);
+
+}
+
+
+// Function used to load scores from the file
+ScoreEntry* load_scores(int* count)
+{
+
+    *count = 0;
+    FILE* file {fopen(SCORES_FILE, "r")};
+    if (file == nullptr)
+    {
+        // No scores yet
+        return nullptr;
+    }
+
+    // Count lines to determine memory size
+    int character {0};
+    int lines {0};
+    while(!feof(file))
+    {
+        character = fgetc(file);
+        if(character == '\n')
+        {
+            lines++;
+        }
+    }
+
+    // Allocate exact memory needed
+    if (lines == 0)
+    {
+        fclose(file);
+        return nullptr;
+    }
+
+    auto* scores {new ScoreEntry[lines + 1]}; // +1 safety padding
+
+    // Read Data
+    rewind(file);
+    int i {0};
+    // Limit buffer width to prevent overflow
+    while (i < lines && fscanf(file, "%31s %d", scores[i].name, &scores[i].score) == 2)
+    {
+        i++;
+    }
+    fclose(file);
+    *count = i;
+
+    // Sorting
+    qsort(scores, *count, sizeof(ScoreEntry), compare_scores);
+
+    return scores;
+
+}
+
+
+void free_scores(GameSession* session)
+{
+    if (session->high_scores != nullptr)
+    {
+        delete[] session->high_scores;
+        session->high_scores = nullptr;
+    }
+    session->total_scores = 0;
+    session->current_page = 0;
+}
+
+void handle_score_input(GameSession* session, const SDL_Event* event)
+{
+    if (event->type == SDL_KEYDOWN)
+    {
+        int max_page = (session->total_scores - 1) / SCORES_PER_PAGE;
+
+        switch (event->key.keysym.sym)
+        {
+            case SDLK_ESCAPE:
+            case SDLK_RETURN:
+                session->state = STATE_MENU;
+                free_scores(session); // Clean up memory when leaving screen
+                break;
+            case SDLK_RIGHT: // Next Page
+                if (session->current_page < max_page)
+                    session->current_page++;
+                break;
+            case SDLK_LEFT: // Prev Page
+                if (session->current_page > 0)
+                    session->current_page--;
+                break;
+        }
+    }
 }

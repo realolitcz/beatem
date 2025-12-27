@@ -94,7 +94,20 @@ SDL_Texture* init_texture(const char* path, SDL_Renderer* renderer)
 }
 
 
-// Function used to initialize Camera
+// Helper function used to populated assets struct with given asset textures
+void init_texture_assets(SDL_Renderer* renderer, TextureAssets* assets)
+{
+
+    assets->tileset = init_texture("assets/brawler_tileset.bmp", renderer);
+    assets->charset = init_texture("assets/cs8x8.bmp", renderer);
+    assets->knight  = init_texture("assets/knight_spritesheet.bmp", renderer);
+    assets->zombie  = init_texture("assets/zombie_spritesheet.bmp", renderer);
+    assets->ghost   = init_texture("assets/ghost_spritesheet.bmp", renderer);
+
+}
+
+
+// Function used to initialize camera
 void init_camera(Camera* camera)
 {
 
@@ -106,15 +119,14 @@ void init_camera(Camera* camera)
 }
 
 
-// // Function to load level from given level-config file
-Level* load_level(const char* path, SDL_Texture* zombie, SDL_Texture* ghost)
+// Function to load level from given level-config file
+Level* load_level(const char* path, const TextureAssets* assets)
 {
 
     // File handle for level config file
     FILE* file {fopen(path, "r")};
     if (file == nullptr)
     {
-        fclose(file);
         fprintf(stderr, "Level loading failed: %s\n", SDL_GetError());
         exit(1);
     }
@@ -158,7 +170,7 @@ Level* load_level(const char* path, SDL_Texture* zombie, SDL_Texture* ghost)
                 fprintf(stderr, "Invalid enemy data in level file\n");
                 exit(1);
             }
-            SDL_Texture* texture {type == ENEMY_TYPE_CHARGER ? ghost : zombie};
+            SDL_Texture* texture {type == ENEMY_TYPE_CHARGER ? assets->ghost : assets->zombie};
             init_enemy(&level->enemies[i], texture, type, x, y);
         }
     }
@@ -194,6 +206,163 @@ void free_level(const Level* level)
 }
 
 
+// Helper function used to handle transitions between levels
+void change_level(Level** current_level_ptr, const char* path, const TextureAssets* assets, Player* player,
+                  Camera* camera, const bool reset_stats)
+{
+
+    // Safety Cleanup
+    if (*current_level_ptr != nullptr)
+    {
+        free_level(*current_level_ptr);
+    }
+
+    // Load New Data
+    *current_level_ptr = load_level(path, assets);
+
+    // Handle Player State
+    if (reset_stats)
+    {
+        // Full wipe (New Game / Retry)
+        reset_player_state(player);
+    }
+    else
+    {
+        // Keep Score (Next Stage)
+        prepare_player_for_next_level(player);
+    }
+
+    camera->camera_x = 0;
+
+}
+
+
+// Helper function used to prepare and render menu background
+void render_menu_background(SDL_Renderer* renderer, SDL_Texture* tileset)
+{
+
+    // We will be filling the background will pure darkness
+    constexpr SDL_Rect source
+    {
+        .x = DARKNESS_X,
+        .y = DARKNESS_Y,
+        .w = SOURCE_TILE_SIZE,
+        .h = SOURCE_TILE_SIZE
+    };
+
+    SDL_Rect destination
+    {
+        .x = 0,
+        .y = 0,
+        .w = TARGET_TILE_SIZE,
+        .h = TARGET_TILE_SIZE
+    };
+
+    // Loop through the entire screen to tile the background
+    for (int y {0}; y < SCREEN_HEIGHT; y += TARGET_TILE_SIZE)
+    {
+        for (int x {0}; x < SCREEN_WIDTH; x += TARGET_TILE_SIZE)
+        {
+            destination.x = x;
+            destination.y = y;
+            SDL_RenderCopy(renderer, tileset, &source, &destination);
+        }
+    }
+
+}
+
+
+// Function used to render main menu of the game
+void render_menu(SDL_Renderer* renderer, SDL_Texture* charset, const GameSession* session)
+{
+
+    // Draw Title -> (ScreenCenter) - (Half of the string's unscaled width)
+    const int title_x {static_cast<int>(SCREEN_WIDTH / 2 - strlen(TITLE) * TARGET_CHAR_SIZE / 2)};
+    render_text(renderer, charset, title_x, MENU_ROW_ONE, TITLE, INITIAL_SCALE * 2.0f);
+
+    // Draw Options
+    const char* options[] = { "START GAME", "HIGH SCORES", "EXIT" };
+
+    for (int i {0}; i < 3; i++)
+    {
+        const int y_pos {MENU_ROW_ONE + ((i + 1) * TARGET_TILE_SIZE)};
+        const int text_len {static_cast<int>(strlen(options[i]))};
+        const int x_pos {SCREEN_WIDTH / 2 - (text_len * TARGET_CHAR_SIZE) / 2};
+
+        // Highlight selected option
+        if (i == session->menu_selection)
+        {
+            SDL_SetTextureColorMod(charset, 255, 215, 0); // Gold
+            render_text(renderer, charset, x_pos - TARGET_TILE_SIZE, y_pos, ">", INITIAL_SCALE * 1.5f);
+        }
+        else
+        {
+            SDL_SetTextureColorMod(charset, 255, 255, 255); // White
+        }
+
+        render_text(renderer, charset, x_pos, y_pos, options[i], INITIAL_SCALE * 1.5f);
+    }
+
+    SDL_SetTextureColorMod(charset, 255, 255, 255); // Reset
+
+
+}
+
+
+// Function used to render name input field
+void render_name_input(SDL_Renderer* renderer, SDL_Texture* charset, const GameSession* session)
+{
+
+    const char* label {"ENTER NICKNAME:"};
+    const int label_x {static_cast<int>(SCREEN_WIDTH / 2 - strlen(label) * TARGET_CHAR_SIZE / 2)};
+    render_text(renderer, charset, label_x, MENU_ROW_ONE, label, INITIAL_SCALE * 1.5f);
+
+    const char* name_to_render {(strlen(session->player_name) > 0) ? session->player_name : " "};
+    const int name_x {static_cast<int>(SCREEN_WIDTH / 2 - strlen(name_to_render) * TARGET_CHAR_SIZE / 2)};
+
+    // Draw text in Gold to show it is active input
+    SDL_SetTextureColorMod(charset, 255, 215, 0);
+    render_text(renderer, charset, name_x, MENU_ROW_ONE * 2, name_to_render, INITIAL_SCALE * 2.0f);
+    SDL_SetTextureColorMod(charset, 255, 255, 255);
+
+    const char* prompt {"[PRESS ENTER]"};
+    const int prompt_x {static_cast<int>(SCREEN_WIDTH / 2 - strlen(prompt) * TARGET_CHAR_SIZE / 2)};
+    render_text(renderer, charset, prompt_x, MENU_ROW_ONE * 3, prompt, INITIAL_SCALE * 1.5f);
+
+}
+
+
+// Function used to render game-over screen
+void render_game_over(SDL_Renderer* renderer, SDL_Texture* charset, const Player* player)
+{
+
+    // If player has health, it's a victory, not a game over
+    const char* title {(player->health_points > 0) ? "VICTORY!" : "GAME OVER"};
+
+    const int title_x {static_cast<int>(SCREEN_WIDTH / 2 - strlen(title) * TARGET_CHAR_SIZE / 2)};
+
+    if (player->health_points > 0)
+    {
+        SDL_SetTextureColorMod(charset, 0, 255, 0);
+    }
+    render_text(renderer, charset, title_x, MENU_ROW_ONE, title, INITIAL_SCALE * 3.0f);
+    SDL_SetTextureColorMod(charset, 255, 255, 255);
+
+    char score_buffer[BASE_BUFFER_SIZE];
+    snprintf(score_buffer, sizeof(score_buffer), "FINAL SCORE: %d", player->score);
+    const int score_x {static_cast<int>(SCREEN_WIDTH / 2 - strlen(score_buffer) * TARGET_CHAR_SIZE / 2)};
+    render_text(renderer, charset, score_x, MENU_ROW_ONE * 2, score_buffer, INITIAL_SCALE * 1.5f);
+
+    const char* prompt {"PRESS 'Y' TO EXIT OR 'N' TO RESET"};
+    const int prompt_x {static_cast<int>(SCREEN_WIDTH / 2 - strlen(prompt) * TARGET_CHAR_SIZE / 2)};
+
+    SDL_SetTextureColorMod(charset, 255, 100, 100);
+    render_text(renderer, charset, prompt_x, MENU_ROW_ONE * 3, prompt, INITIAL_SCALE * 1.5f);
+    SDL_SetTextureColorMod(charset, 255, 255, 255);
+
+}
+
+
 // Function used to handle rendering of level background
 void render_background(SDL_Renderer* renderer, SDL_Texture* texture, const Level* level, const Camera* camera)
 {
@@ -210,36 +379,36 @@ void render_background(SDL_Renderer* renderer, SDL_Texture* texture, const Level
     // Markers of tiles in the tileset
     constexpr SDL_Rect floor
     {
-        .x = 0,
-        .y = 0,
+        .x = FLOOR_X,
+        .y = FLOOR_Y,
         .w = SOURCE_TILE_SIZE,
         .h = SOURCE_TILE_SIZE
     };
     constexpr SDL_Rect wall
     {
-        .x = 16,
-        .y = 0,
+        .x = WALL_X,
+        .y = WALL_Y,
         .w = SOURCE_TILE_SIZE,
         .h = SOURCE_TILE_SIZE
     };
     constexpr SDL_Rect border
     {
-        .x = 32,
-        .y = 0,
+        .x = BORDER_X,
+        .y = BORDER_Y,
         .w = SOURCE_TILE_SIZE,
         .h = SOURCE_TILE_SIZE
     };
     constexpr SDL_Rect darkness
     {
-        .x = 32,
-        .y = 16,
+        .x = DARKNESS_X,
+        .y = DARKNESS_Y,
         .w = SOURCE_TILE_SIZE,
         .h = SOURCE_TILE_SIZE
     };
     constexpr SDL_Rect exit
     {
-        .x = 0,
-        .y = 16,
+        .x = EXIT_X,
+        .y = EXIT_X,
         .w = SOURCE_TILE_SIZE,
         .h = SOURCE_TILE_SIZE
     };
@@ -362,6 +531,11 @@ void render_player(SDL_Renderer* renderer, const Player* player, const Camera* c
                 total_frames = FRAMES_COMBO2;
                 total_duration = COMBO2_FRAMES;
                 break;
+            case AERIAL_ATTACK_PLAYER:
+                row_offset = ROW_AERIAL_ATK_OFFSET;
+                total_frames = FRAMES_AERIAL;
+                total_duration = AERIAL_ATTACK_FRAMES;
+                break;
             default:
                 ;
         }
@@ -475,8 +649,8 @@ void render_enemy(SDL_Renderer* renderer, const Enemy* enemy, const Camera* came
     {
         .x = enemy->x - camera->camera_x,
         .y = enemy->y,
-        .w = enemy->w,
-        .h = enemy->h
+        .w = ENEMY_SIZE,
+        .h = ENEMY_SIZE
     };
 
     // The spritesheet faces RIGHT by default <=> if facing LEFT, flip horizontally.
@@ -496,7 +670,7 @@ void render_stat(SDL_Renderer* renderer, SDL_Texture* charset, const int x, cons
 
     snprintf(buffer, BASE_BUFFER_SIZE, "%s: %d", label, value);
 
-    render_text(renderer, charset, x, y, buffer, 1.0f);
+    render_text(renderer, charset, x, y, buffer, INITIAL_SCALE);
 
 }
 
@@ -543,9 +717,9 @@ void render_multiplier(SDL_Renderer* renderer, SDL_Texture* charset, const Playe
         int combo_y = {TARGET_TILE_SIZE * 1/2};
 
         // If the scale is big => shake the text
-        if (player->multiplier_scale > 1.5f)
+        if (player->multiplier_scale > INITIAL_SCALE * 1.5f)
         {
-            // Add random offset between -2 and 2
+            // Add pseudorandom offset between -2 and 2
             combo_x += (rand() % 5) - 2;
             combo_y += (rand() % 5) - 2;
         }
@@ -568,7 +742,7 @@ void render_multiplier(SDL_Renderer* renderer, SDL_Texture* charset, const Playe
                     break;
             }
         }
-        else if (player->multiplier_scale > 1.0f)
+        else if (player->multiplier_scale > INITIAL_SCALE)
         {
             SDL_SetTextureColorMod(charset, 255, 215, 0); // Gold (On Hit)
         }
@@ -607,7 +781,7 @@ void render_health_bar(SDL_Renderer* renderer, const Player* player)
 
     if (player->health_points > 0)
     {
-        const int current_bar_width = (player->health_points * total_bar_width) / player->max_health_points;
+        const int current_bar_width = (player->health_points * total_bar_width) / PLAYER_MAX_HEALTH;
 
         const SDL_Rect foreground
         {
@@ -688,19 +862,44 @@ void render_text(SDL_Renderer* renderer, SDL_Texture* texture, const int x, cons
 
 
 // Function to render info associated with the developer mode
-void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player, const Camera* camera)
+void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, const Player* player, const Camera* camera)
 {
 
     // Buffer for holding text
     char buffer[BASE_BUFFER_SIZE];
     // Show current action name
-    snprintf(buffer, BASE_BUFFER_SIZE, "ACTION: %s", player->current_action);
+    const char* current_action {"IDLE"};
+
+    switch(player->action_type)
+    {
+        case LIGHT_ATTACK_PLAYER:
+            current_action = "LIGHT ATTACK";
+            break;
+        case HEAVY_ATTACK_PLAYER:
+            current_action = "HEAVY ATTACK";
+            break;
+        case COMBO_FIRST_PLAYER:
+            current_action = "TRIPLE SLASH";
+            break;
+        case COMBO_SECOND_PLAYER:
+            current_action = "ULTIMATE BREAKER";
+            break;
+        case AERIAL_ATTACK_PLAYER:
+            current_action = "AERIAL KICK";
+            break;
+        default:
+            current_action = "IDLE";
+            break;
+    }
+
+    snprintf(buffer, BASE_BUFFER_SIZE, "ACTION: %s", current_action);
     render_text(renderer, charset, SCREEN_BEGINNING, SCREEN_HEIGHT - 2 * TARGET_CHAR_SIZE, buffer,
            INITIAL_SCALE);
 
     // Visualize the Buffer (show last 5 keys)
     render_text(renderer, charset, SCREEN_BEGINNING, SCREEN_HEIGHT - TARGET_CHAR_SIZE, "BUFFER: ",
            INITIAL_SCALE);
+
     for(int i {0}; i < 5; i++)
     {
         const char* keyname = SDL_GetKeyName(player->buffer[i].key);
@@ -725,6 +924,115 @@ void render_debug(SDL_Renderer* renderer, SDL_Texture* charset, Player* player, 
         };
         SDL_SetRenderDrawColor(renderer, 0, 255, 0, 100);
         SDL_RenderDrawRect(renderer, &attack_box);
+    }
+
+}
+
+
+// Function used to render high scores screen
+void render_highscores(SDL_Renderer* renderer, SDL_Texture* charset, const GameSession* session)
+{
+
+    // Title
+    const char* title {"HALL OF FAME"};
+    render_text(renderer, charset, SCREEN_WIDTH/2 - (strlen(title)*TARGET_CHAR_SIZE)/2,
+                TARGET_TILE_SIZE * 2, title, INITIAL_SCALE * 2.0f);
+
+    if (session->total_scores == 0)
+    {
+        const char* msg {"NO RECORDS YET"};
+        render_text(renderer, charset, SCREEN_WIDTH/2 - (strlen(msg)*TARGET_CHAR_SIZE)/2,
+                    SCREEN_HEIGHT/2, msg, INITIAL_SCALE * 1.5f);
+        return;
+    }
+
+    // Pagination calculation
+    const int start_index {session->current_page * SCORES_PER_PAGE};
+    int end_index {start_index + SCORES_PER_PAGE};
+    if (end_index > session->total_scores)
+    {
+        end_index = session->total_scores;
+    }
+
+    int y_pos {TARGET_TILE_SIZE * 4};
+
+    // Render List
+    for (int i {start_index}; i < end_index; i++)
+    {
+        char buffer[BASE_BUFFER_SIZE];
+        // Format: "1. NAME ...... 1000"
+        snprintf(buffer, sizeof(buffer), "%d. %s", i + 1, session->high_scores[i].name);
+
+        // Draw Name (Left aligned-ish)
+        render_text(renderer, charset, SCREEN_WIDTH/3, y_pos, buffer, INITIAL_SCALE * 1.5f);
+
+        // Draw Score (Right aligned-ish)
+        snprintf(buffer, sizeof(buffer), "%d", session->high_scores[i].score);
+        render_text(renderer, charset, SCREEN_WIDTH * 2/3, y_pos, buffer, INITIAL_SCALE * 1.5f);
+
+        y_pos += TARGET_TILE_SIZE;
+    }
+
+    // Render pagination controls
+    char page_buf[BASE_BUFFER_SIZE];
+    const int total_pages {(session->total_scores - 1) / SCORES_PER_PAGE + 1};
+    snprintf(page_buf, BASE_BUFFER_SIZE, "< PAGE %d / %d >", session->current_page + 1, total_pages);
+
+    render_text(renderer, charset, SCREEN_WIDTH/2 - (strlen(page_buf)*TARGET_CHAR_SIZE)/2,
+              SCREEN_HEIGHT - TARGET_TILE_SIZE * 2, page_buf, INITIAL_SCALE * 1.5f);
+
+}
+
+
+// Master wrapper for all game rendering guys
+void render_game(SDL_Renderer* renderer, const GameSession* session, const Player* player, const Level* level,
+                 const Camera* camera, const TextureAssets* assets, const Uint32 game_time)
+{
+
+    // Draw backgrounds
+    if ((session->state == STATE_GAMEPLAY || session->state == STATE_GAME_OVER) && level != nullptr)
+    {
+        render_background(renderer, assets->tileset, level, camera);
+    }
+    else
+    {
+        render_menu_background(renderer, assets->tileset);
+    }
+
+    // Draw UI / Entities
+    switch (session->state)
+    {
+        case STATE_MENU:
+            render_menu(renderer, assets->charset, session);
+            break;
+        case STATE_NAME_INPUT:
+            render_name_input(renderer, assets->charset, session);
+            break;
+        case STATE_GAMEPLAY:
+            // Render Entities on top of the level background
+            if (player->debug_mode)
+            {
+                render_debug(renderer, assets->charset, player, camera);
+            }
+            if (level)
+            {
+                for (int i {0}; i < level->enemy_count; i++)
+                {
+                    render_enemy(renderer, &level->enemies[i], camera);
+                }
+            }
+            render_player(renderer, player, camera);
+            render_statusbar(renderer, assets->charset, player, game_time);
+            break;
+        case STATE_GAME_OVER:
+            render_menu_background(renderer, assets->tileset);
+            render_game_over(renderer, assets->charset, player);
+            break;
+        case STATE_SCORES:
+            render_highscores(renderer, assets->charset, session);
+            break;
+        default:
+            break;
     }
 
 }
