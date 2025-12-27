@@ -975,57 +975,60 @@ void handle_game_over_input(GameSession *session, const SDL_Event *event)
 
 }
 
-void update_gameplay(GameSession *session, Player *player, Level **current_level,
-                     Camera *camera, TextureAssets *assets,
-                     const char *level_files[], int max_levels, Uint32 current_time)
+
+// Master handler function for every-tick updates
+void update_gameplay(GameSession *session, Player *player, Level **current_level, Camera *camera,
+                     const TextureAssets *assets, const char *level_files[], const int max_levels,
+                     const Uint32 current_time)
 {
-    // 1. Handle Input & Movement
-    const Uint8* currentKeyStates = SDL_GetKeyboardState(nullptr);
+
+    // Handle input and movement
+    const Uint8* currentKeyStates {SDL_GetKeyboardState(nullptr)};
     handle_player_movement(player, *current_level, currentKeyStates);
     handle_camera_movement(player, *current_level, camera);
 
-    // 2. Update Combat Logic
+    // Update combat logic
     update_hitboxes(player);
 
     // Note: Dereference *current_level to get the actual pointer
     update_enemies((*current_level)->enemies, player, *current_level);
 
-    for (int i = 0; i < (*current_level)->enemy_count; i++)
+    for (int i {0}; i < (*current_level)->enemy_count; i++)
     {
         check_if_enemy_hit(player, &(*current_level)->enemies[i], current_time);
         check_if_player_hit(player, &(*current_level)->enemies[i]);
     }
 
-    // 3. Update Physics
+    // Update physics
     handle_gravity(player);
     handle_attack(player);
 
-    // 4. Check Game Over
+    // Check game over
     if (player->health_points <= 0)
     {
         session->state = STATE_GAME_OVER;
     }
 
-    // 5. Check Stage Completion
+    // Check stage completion
     if (check_stage_completion(player, *current_level))
     {
         session->current_level_index++;
 
         if (session->current_level_index < max_levels)
         {
-            // Load Next Stage (Keep stats)
+            // Load next stage (keep stats)
             // Pass the pointer to the pointer
             change_level(current_level, level_files[session->current_level_index], assets, player, camera, false);
         }
         else
         {
-            // Game Finished -> Victory Screen
+            // Game finished -> victory screen
             session->state = STATE_GAME_OVER;
             session->current_level_index = 0;
         }
     }
-}
 
+}
 
 
 // Helper function used as comparator for qsort (descending order)
@@ -1110,38 +1113,55 @@ ScoreEntry* load_scores(int* count)
 }
 
 
+// Helper function to clean-up high score list
 void free_scores(GameSession* session)
 {
+
     if (session->high_scores != nullptr)
     {
         delete[] session->high_scores;
         session->high_scores = nullptr;
     }
+
     session->total_scores = 0;
     session->current_page = 0;
+
 }
 
+
+// Handler for high score page
 void handle_score_input(GameSession* session, const SDL_Event* event)
 {
+
     if (event->type == SDL_KEYDOWN)
     {
-        int max_page = (session->total_scores - 1) / SCORES_PER_PAGE;
+        const int max_page {(session->total_scores - 1) / SCORES_PER_PAGE};
 
         switch (event->key.keysym.sym)
         {
             case SDLK_ESCAPE:
             case SDLK_RETURN:
                 session->state = STATE_MENU;
-                free_scores(session); // Clean up memory when leaving screen
+                // Clean up memory when leaving screen
+                free_scores(session);
                 break;
-            case SDLK_RIGHT: // Next Page
+            // Next page
+            case SDLK_RIGHT:
                 if (session->current_page < max_page)
+                {
                     session->current_page++;
+                }
                 break;
-            case SDLK_LEFT: // Prev Page
+            // Previous page
+            case SDLK_LEFT:
                 if (session->current_page > 0)
+                {
                     session->current_page--;
+                }
                 break;
+            default:
+                ;
         }
     }
+
 }

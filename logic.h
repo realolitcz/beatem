@@ -121,7 +121,7 @@ void handle_menu_input(GameSession* session, const SDL_Event* event);
 void handle_name_input(GameSession* session, const SDL_Event* event);
 void handle_game_over_input(GameSession* session, const SDL_Event* event);
 void update_gameplay(GameSession *session, Player *player, Level **current_level, Camera *camera,
-                     TextureAssets *assets, const char *level_files[], int max_levels, Uint32 current_time);
+                     const TextureAssets *assets, const char *level_files[], int max_levels, Uint32 current_time);
 int compare_scores(const void* a, const void* b);
 void save_score(const char* name, int score);
 ScoreEntry* load_scores(int* count);
