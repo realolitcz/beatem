@@ -32,6 +32,18 @@ struct ScoreEntry
     int score;                  // Achieved Player score
 };
 
+struct ActionData
+{
+    int id;              // Matches action_type enum
+    char input_seq[8];   // e.g. "KKK"
+    int damage;
+    int width;
+    int height;
+    int offset_x;
+    int offset_y;
+    int owner_mask;      // 1 = Player, 2 = Enemy
+};
+
 struct GameSession
 {
     GameState state;                    // Indicator of current state of game
@@ -41,6 +53,7 @@ struct GameSession
     ScoreEntry* high_scores;            // Array holding players scores
     int total_scores;                   // How many scores loaded
     int current_page;                   // Current view page
+    ActionData actions[16];
 };
 
 struct Player
@@ -63,6 +76,7 @@ struct Player
     int score;               // Current points for the player
     int hurt_timer;          // Counts down when player takes damage
     int health_points;       // Current HP
+    ActionData* action_definitions;
 };
 
 struct Enemy
@@ -94,7 +108,7 @@ struct TextureAssets;
 struct Camera;
 
 void init_game_session(GameSession* game_session);
-void init_player(Player* player, SDL_Texture* texture);
+void init_player(Player* player, SDL_Texture* texture, ActionData* actions);
 void reset_player_state(Player* player);
 void prepare_player_for_next_level(Player* player);
 void handle_ui_input(GameSession* session, const SDL_Event* event);
@@ -127,5 +141,7 @@ void save_score(const char* name, int score);
 ScoreEntry* load_scores(int* count);
 void free_scores(GameSession* session);
 void handle_score_input(GameSession* session, const SDL_Event* event);
+void load_game_actions(GameSession* session);
+bool check_action_sequence(const Player* player, const char* sequence);
 
 #endif //BEATEM_LOGIC_H

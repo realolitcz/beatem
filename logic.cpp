@@ -1,3 +1,12 @@
+// File: logic.cpp
+// Header: logic.h
+// Author: Oliwer A. Gużewski (s208004)
+
+// Support for legacy SDL versions provided by Dr Ostrowski
+// extern "C" {
+// #include"./SDL2-2.0.10/include/SDL.h"
+// #include"./SDL2-2.0.10/include/SDL_main.h"
+
 #include <SDL2/SDL.h>
 #include "window.h"
 #include "logic.h"
@@ -19,10 +28,14 @@ void init_game_session(GameSession* game_session)
 
 
 // Function used to initialize Player entity
-void init_player(Player* player, SDL_Texture* texture)
+void init_player(Player* player, SDL_Texture* texture, ActionData* actions)
 {
 
     player->texture = texture;
+
+    // Store the reference to the rules
+    player->action_definitions = actions;
+
     // DRY-ed logic from resetting
     reset_player_state(player);
 
@@ -113,56 +126,42 @@ void reset_game_to_menu(Level** level, const char* path, const TextureAssets* as
 void handle_input_event(Player* player, const SDL_Event* event, const Level* current_level)
 {
 
-    // If key was pressed
     if (event->type == SDL_KEYDOWN && event->key.repeat == 0 )
     {
-        const int key {event->key.keysym.sym};
-        bool combo_triggered {false};
+        const int key = event->key.keysym.sym;
 
+        // Toggle the debug mode
         if (key == SDLK_F1)
         {
             player->debug_mode = !player->debug_mode;
         }
 
-        // Always push key to the buffer
+        // Push input to the buffer
         if (key == SDLK_k || key == SDLK_l || key == SDLK_a || key == SDLK_d)
         {
             push_input(player, key, SDL_GetTicks());
-
-            const int previous_time {player->action_timer};
-
-            check_combos(player, current_level,SDL_GetTicks());
-
-            if (player->action_timer > previous_time)
-            {
-                combo_triggered = true;
-            }
         }
 
-        // If combo was not triggered we perform normal actions
-        if (combo_triggered == false)
+        // Decide whether conduct air or ground logic
+        if (player->z > Z_GROUND_LEVEL)
         {
-            if (key == SDLK_SPACE)
-            {
-                player_jump(player);
-            }
-            if (player->action_timer == 0)
+            // Only allow Aerial Attack (ID 5) and do NOT call check_combos here, or it will trigger a ground move!
+            if (player->action_timer == TIMER_ZERO)
             {
                 if (key == SDLK_k || key == SDLK_l)
                 {
-                    // Are we in the air?
-                    if (player->z > Z_GROUND_LEVEL)
-                    {
-                        // Pressing K or L in air triggers specific move
-                        player_try_attack(player, AERIAL_ATTACK_PLAYER);
-                    }
-                    else
-                    {
-                        // Ground attacks
-                        if (key == SDLK_k) player_try_attack(player, LIGHT_ATTACK_PLAYER);
-                        if (key == SDLK_l) player_try_attack(player, HEAVY_ATTACK_PLAYER);
-                    }
+                    player_try_attack(player, AERIAL_ATTACK_PLAYER);
                 }
+            }
+        }
+        else
+        {
+            // Only check combos/ground attacks if we are actually on the ground
+            check_combos(player, current_level, SDL_GetTicks());
+            // Jump (Only allowed on ground)
+            if (key == SDLK_SPACE)
+            {
+                player_jump(player);
             }
         }
     }
@@ -456,31 +455,76 @@ void check_combos(Player* player, const Level* current_level, const Uint32 curre
         return;
     }
 
-    // Combo 1: Triple Light (K - K - K)
-    if (player->buffer[0].key == SDLK_k && player->buffer[1].key == SDLK_k && player->buffer[2].key == SDLK_k)
+    int best_action_id {-1};
+    int max_seq_len {-1};
+
+    // Find the longest matching sequence in order to not be blocked by single attacks
+    for (int i {0}; i < 16; i++)
     {
-        if (player->buffer[0].time - player->buffer[2].time < COMBO_TIMEOUT)
+        const ActionData* action = &player->action_definitions[i];
+
+        // Ignore the empty slots
+        if (action->id == -1)
         {
-            player->action_type = COMBO_FIRST_PLAYER;
+            continue;
+        }
+        // Ignore actions that do not belong to the player
+        if (!(action->owner_mask & 1))
+        {
+            continue;
+        }
+
+        // Check if this sequence matches the buffer
+        if (check_action_sequence(player, action->input_seq))
+        {
+            int len = strlen(action->input_seq);
+            // If this match is longer (better) than what we found so far, keep it
+            // This ensures "KKK" (len 3) wins over "K" (len 1)
+            if (len > max_seq_len)
+            {
+                max_seq_len = len;
+                best_action_id = action->id;
+            }
+        }
+    }
+
+    // Execute the best match
+    if (best_action_id != -1)
+    {
+        const ActionData* action = &player->action_definitions[best_action_id];
+        player->action_type = action->id;
+
+        // Set frames
+        if (action->id == COMBO_FIRST_PLAYER)
+        {
             player->action_timer = COMBO1_FRAMES;
-            clear_buffer(player);
-            return;
         }
-    }
-
-    // Combo 2: Light - Heavy - Light (K - L - K)
-    if (player->buffer[0].key == SDLK_k && player->buffer[1].key == SDLK_l && player->buffer[2].key == SDLK_k)
-    {
-        if (player->buffer[0].time - player->buffer[1].time < COMBO_TIMEOUT)
+        else if (action->id == COMBO_SECOND_PLAYER)
         {
-            player->action_type = COMBO_SECOND_PLAYER;
             player->action_timer = COMBO2_FRAMES;
-            clear_buffer(player);
-            return;
         }
+        else if (action->id == LIGHT_ATTACK_PLAYER)
+        {
+            player->action_timer = ATTACK_LIGHT_FRAMES;
+        }
+        else if (action->id == HEAVY_ATTACK_PLAYER)
+        {
+            player->action_timer = ATTACK_HEAVY_FRAMES;
+        }
+        else
+        {
+            player->action_timer = 20;
+        }
+
+        // Clear buffer ONLY if it was a multi-key combo
+        if (strlen(action->input_seq) > 1)
+        {
+            clear_buffer(player);
+        }
+        return;
     }
 
-    // Check for Double Tap (Same key twice, fast)
+    // Check for double tap (dashing is not included in actions -> it is exclusive to the player and hardcoded)
     if (player->buffer[0].key == player->buffer[1].key &&
         player->buffer[0].time - player->buffer[1].time < DASH_TIMEOUT)
     {
@@ -678,62 +722,36 @@ void update_enemies(Enemy* enemies, const Player* player, const Level* current_l
 void update_hitboxes(Player* player)
 {
 
-    // Hitbox initially is not present
-    player->attack_box =
+    player->attack_box = {0, 0, 0, 0};
+    if (player->action_type == IDLE_PLAYER)
     {
-        .x = 0,
-        .y = 0,
-        .h = 0,
-        .w = 0
-    };
+        return;
+    }
 
-    // Create hitbox <=> player is currently not idle
-    if (player->action_type != IDLE_PLAYER)
+    if (player->action_type >= 0 && player->action_type < 16)
     {
-        switch (player->action_type)
+        ActionData* action = &player->action_definitions[player->action_type];
+
+        if (action->id != -1 && action->width > 0)
         {
-            case LIGHT_ATTACK_PLAYER:
-                player->attack_box.w = LIGHT_ATTACK_WIDTH;
-                player->attack_box.h = LIGHT_ATTACK_HEIGHT;
-                player->attack_box.x = player->facing_right ?
-                                       player->global_x + LIGHT_ATTACK_X_OFFSET :
-                                       player->global_x - player->attack_box.w + (TARGET_TILE_SIZE - LIGHT_ATTACK_X_OFFSET);
-                player->attack_box.y = player->global_y + LIGHT_ATTACK_Y_OFFSET;
-                break;
-            case HEAVY_ATTACK_PLAYER:
-                player->attack_box.w = HEAVY_ATTACK_WIDTH;
-                player->attack_box.h = HEAVY_ATTACK_HEIGHT;
-                player->attack_box.x = player->facing_right ?
-                                       player->global_x + HEAVY_ATTACK_X_OFFSET :
-                                       player->global_x - player->attack_box.w + (TARGET_TILE_SIZE - HEAVY_ATTACK_X_OFFSET);
-                player->attack_box.y = player->global_y - HEAVY_ATTACK_Y_OFFSET;
-                break;
-            case COMBO_FIRST_PLAYER:
-                player->attack_box.w = COMBO_FIRST_WIDTH;
-                player->attack_box.h = COMBO_FIRST_HEIGHT;
-                player->attack_box.x = player->facing_right ?
-                                       player->global_x + COMBO_FIRST_X_OFFSET :
-                                       player->global_x - player->attack_box.w + (TARGET_TILE_SIZE - COMBO_FIRST_X_OFFSET);
-                player->attack_box.y = player->global_y;
-                break;
-            case COMBO_SECOND_PLAYER:
-                player->attack_box.w = COMBO_FIRST_WIDTH;
-                player->attack_box.h = COMBO_SECOND_HEIGHT;
-                player->attack_box.x = player->facing_right ?
-                                       player->global_x + COMBO_SECOND_X_OFFSET :
-                                       player->global_x - player->attack_box.w + (TARGET_TILE_SIZE - COMBO_SECOND_X_OFFSET);
-                player->attack_box.y = player->global_y;
-                break;
-            case AERIAL_ATTACK_PLAYER:
-                player->attack_box.w = AERIAL_ATTACK_WIDTH;
-                player->attack_box.h = AERIAL_ATTACK_HEIGHT;
-                player->attack_box.x = player->facing_right ?
-                                       player->global_x + AERIAL_ATTACK_X_OFFSET :
-                                       player->global_x - player->attack_box.w + (TARGET_TILE_SIZE - AERIAL_ATTACK_X_OFFSET);
-                player->attack_box.y = player->global_y;
-                break;
-            default:
-                break;
+            player->attack_box.w = action->width;
+            player->attack_box.h = action->height;
+
+            if (player->facing_right)
+            {
+                player->attack_box.x = player->global_x + action->offset_x;
+            }
+            else
+            {
+                player->attack_box.x = player->global_x - action->width + (TARGET_TILE_SIZE - action->offset_x);
+            }
+
+            player->attack_box.y = player->global_y + action->offset_y;
+
+            if (player->action_type == AERIAL_ATTACK_PLAYER)
+            {
+                player->attack_box.y -= static_cast<int>(player->z);
+            }
         }
     }
 
@@ -765,7 +783,8 @@ void check_if_enemy_hit(Player* player, Enemy* enemy, const Uint32 current_time)
         if (current_time - enemy->last_hit_time > ATTACK_TIME_OFFSET)
         {
             enemy->last_hit_time = current_time;
-            enemy->health_points -= player->action_type * BASE_DAMAGE_MULTIPLIER;
+            const int dmg = player->action_definitions[player->action_type].damage;
+            enemy->health_points -= dmg;
             enemy->stun_timer = STUN_DURATION;
             enemy->hurt_timer = 20;
             if (enemy->health_points <= 0)
@@ -1163,5 +1182,121 @@ void handle_score_input(GameSession* session, const SDL_Event* event)
                 ;
         }
     }
+
+}
+
+
+// Function used to load action configuration from the file
+void load_game_actions(GameSession* session)
+{
+
+    // Calculate scale
+    constexpr float scale = static_cast<float>(TARGET_TILE_SIZE) / SOURCE_TILE_SIZE;
+
+    // Initialize Defaults (hardcoded safety net)
+    for (int i {0}; i < 16; i++)
+    {
+        session->actions[i].id = -1;
+    }
+
+    // Load file
+    FILE* file {fopen("assets/level/actions.txt", "r")};
+    if (!file)
+    {
+        fprintf(stderr, "Cannot find configuration file actions.txt\n");
+        exit(1);
+    }
+
+    char line[BASE_BUFFER_SIZE];
+    while (fgets(line, sizeof(line), file))
+    {
+        // Ignore comment lines
+        if (line[0] == '#')
+        {
+            continue;
+        }
+
+        int id, damage, width, height, offset_x, offset_y, owner;
+        char inputs[32];
+
+        if (sscanf(line, "%d %31s %d %d %d %d %d %d",
+            &id, inputs, &damage, &width, &height, &offset_x, &offset_y, &owner) == 8)
+        {
+            if (id >= 0 && id < 16)
+            {
+                ActionData* act = &session->actions[id];
+                act->id = id;
+                strcpy(act->input_seq, inputs);
+                act->damage = damage;
+                act->owner_mask = owner;
+                act->width = static_cast<int>(width * scale);
+                act->height = static_cast<int>(height * scale);
+                act->offset_x = static_cast<int>(offset_x * scale);
+                act->offset_y = static_cast<int>(offset_y * scale);
+            }
+        }
+    }
+    fclose(file);
+    printf("Game Actions Loaded (Scaled by %.2fx).\n", scale);
+
+}
+
+
+// Function translator and validator for input system
+bool check_action_sequence(const Player* player, const char* sequence)
+{
+
+    const int len {static_cast<int>(strlen(sequence))};
+    if (len == 0 || strcmp(sequence, "0") == 0)
+    {
+        return false;
+    }
+
+    // Timing check
+    if (len > 1 && (player->buffer[0].time - player->buffer[len-1].time > COMBO_TIMEOUT))
+    {
+        return false;
+    }
+
+    // Sequence check
+    for (int i {0}; i < len; i++)
+    {
+        const char c {sequence[len - 1 - i]};
+        int required {0};
+
+        // Mapping keys
+        switch (c)
+        {
+            case 'K':
+                required = SDLK_k;
+                break;
+            case 'L':
+                required = SDLK_l;
+                break;
+            case 'A':
+                required = SDLK_a;
+                break;
+            case 'D':
+                required = SDLK_d;
+                break;
+            case 'W':
+                required = SDLK_w;
+                break;
+            case 'S':
+                required = SDLK_s;
+                break;
+            case ' ':
+                required = SDLK_SPACE;
+                break;
+            default:
+                return false;
+        }
+
+        if (player->buffer[i].key != required)
+        {
+            return false;
+        }
+    }
+    return true;
 
 }

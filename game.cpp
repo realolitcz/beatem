@@ -30,10 +30,12 @@ int main()
 	// Declare struct for game session information holder and populate it with appropriate helper
 	GameSession session {};
 	init_game_session(&session);
+	// Load the game rules
+	load_game_actions(&session);
 
 	// Declare struct for player information populate it with appropriate helper
 	Player player {};
-	init_player(&player, assets.knight);
+	init_player(&player, assets.knight, session.actions);
 
 	// Prepare array with level-config files
 	const char* level_files[] {LVL1_FILE, LVL2_FILE};

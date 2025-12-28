@@ -102,32 +102,8 @@ constexpr int COMBO_TIMEOUT          {500};
 constexpr int DASH_TIMEOUT           {200};
 constexpr int ATTACK_TIME_OFFSET     {1000}; // Prevents machine-gun hits
 constexpr int MULTIPLIER_TIMEOUT     {2000};
-
 constexpr int BASE_DAMAGE_MULTIPLIER {10};
 constexpr int BASE_SCORE_MULTIPLIER  {100};
-
-// Attack hitbox properties
-constexpr int LIGHT_ATTACK_WIDTH     {TARGET_TILE_SIZE};
-constexpr int LIGHT_ATTACK_HEIGHT    {TARGET_TILE_SIZE * 1 / 2};
-constexpr int LIGHT_ATTACK_X_OFFSET  {TARGET_TILE_SIZE * 5 / 6};
-constexpr int LIGHT_ATTACK_Y_OFFSET  {TARGET_TILE_SIZE * 1 / 6};
-
-constexpr int HEAVY_ATTACK_WIDTH     {TARGET_TILE_SIZE * 4 / 3};
-constexpr int HEAVY_ATTACK_HEIGHT    {TARGET_TILE_SIZE * 2 / 3};
-constexpr int HEAVY_ATTACK_X_OFFSET  {TARGET_TILE_SIZE * 2 / 3};
-constexpr int HEAVY_ATTACK_Y_OFFSET  {TARGET_TILE_SIZE * 1 / 3};
-
-constexpr int COMBO_FIRST_WIDTH      {TARGET_TILE_SIZE * 2};
-constexpr int COMBO_FIRST_HEIGHT     {TARGET_TILE_SIZE};
-constexpr int COMBO_FIRST_X_OFFSET   {TARGET_TILE_SIZE * 5 / 6};
-
-constexpr int COMBO_SECOND_WIDTH     {TARGET_TILE_SIZE * 3 / 2};
-constexpr int COMBO_SECOND_HEIGHT    {TARGET_TILE_SIZE * 4 / 3};
-constexpr int COMBO_SECOND_X_OFFSET  {TARGET_TILE_SIZE * 5 / 6};
-
-constexpr int AERIAL_ATTACK_WIDTH    {TARGET_TILE_SIZE * 3 / 2};
-constexpr int AERIAL_ATTACK_HEIGHT   {TARGET_TILE_SIZE};
-constexpr int AERIAL_ATTACK_X_OFFSET {TARGET_TILE_SIZE * 2 / 3};
 
 // Enemies
 constexpr int ENEMY_TYPE_CHASER      {0};
