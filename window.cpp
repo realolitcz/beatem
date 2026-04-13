@@ -1,11 +1,6 @@
 // File: window.cpp
 // Header: window.h
-// Author: Oliwer A. Gużewski (s208004)
-
-// Support for legacy SDL versions provided by Dr Ostrowski
-// extern "C" {
-// #include"./SDL2-2.0.10/include/SDL.h"
-// #include"./SDL2-2.0.10/include/SDL_main.h"
+// Author: Oliwer A. Gużewski
 
 #include <SDL2/SDL.h>
 #include "window.h"
